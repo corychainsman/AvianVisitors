@@ -1,0 +1,63 @@
+name: avian-visitors
+
+services:
+  birdnet:
+    build:
+      context: .
+    image: avian-visitors-birdnet:local
+    container_name: avian-visitors
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    ports:
+      - "8091:8081"
+    environment:
+      TZ: America/New_York
+      BIRDSONGS_FOLDER: /config/BirdSongs
+      LIVESTREAM_BOOT_ENABLED: "true"
+      ALSA_CARD: "avian_capture"
+      AVIAN_AUDIO_CHANNELS: "1"
+      AVIAN_FRAME_INTERVAL_SECONDS: "900"
+      AVIAN_FRAME_URL: "http://127.0.0.1:8081"
+      AVIAN_AUTO_LOCATION: "true"
+      AVIAN_STORAGE_CAP_BYTES: "20000000000"
+      AVIAN_STORAGE_CLEANUP_AT_BYTES: "19000000000"
+      AVIAN_STORAGE_TARGET_BYTES: "18000000000"
+      AVIAN_STORAGE_MIN_PER_SPECIES: "30"
+      AVIAN_STORAGE_MIN_AGE_SECONDS: "600"
+      AVIAN_STORAGE_CHECK_SECONDS: "60"
+      TRAIN_RECORD_ENABLED: "true"
+      TRAIN_RECORD_SESSION_ID: "wellesley-24h-20260806"
+      TRAIN_RECORD_DURATION_SECONDS: "86400"
+      TRAIN_RECORD_BITRATE: "192k"
+      MBTA_REALTIME_ENABLED: "true"
+      MBTA_REALTIME_POLL_SECONDS: "60"
+      AMTRAK_REALTIME_ENABLED: "true"
+      AMTRAK_REALTIME_POLL_SECONDS: "60"
+      AMTRAK_WELLESLEY_RADIUS_KM: "15"
+      AMTRAK_SITE_LATITUDE: "42.30186202682135"
+      AMTRAK_SITE_LONGITUDE: "-71.28787466467018"
+      ssl: "false"
+    devices:
+      - /dev/snd:/dev/snd
+    group_add:
+      - "29"
+    volumes:
+      - ./runtime/config:/config
+    shm_size: "1gb"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=1g
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          test ! -e /run/avian-storage-cap-blocked &&
+          pgrep -f '[e]nforce_avian_storage_cap.py' >/dev/null &&
+          pgrep -f '[d]etect_train_passages.py' >/dev/null &&
+          curl -fsS
+          'http://127.0.0.1:8081/avian/api/birdnet-api.php?action=recent&hours=24'
+          >/dev/null && test -s /home/pi/BirdSongs/Extracted/frame.jpg
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 5m

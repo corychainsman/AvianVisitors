@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Train clip review</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <style>
+    :root { color-scheme: light; --ink:#201c17; --muted:#81776a; --paper:#f7f5ef; --card:#fff; --line:#d8d3c9; --yes:#255f45; --no:#9a3c2d; --maybe:#8a6b19; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    main { width:min(920px, calc(100% - 28px)); margin:0 auto; padding:36px 0 80px; }
+    header { display:flex; align-items:end; justify-content:space-between; gap:24px; margin-bottom:24px; }
+    h1 { margin:0 0 7px; font:700 clamp(31px, 7vw, 58px)/.95 Georgia, serif; letter-spacing:-.035em; }
+    header p { margin:0; color:var(--muted); line-height:1.45; max-width:620px; }
+    .progress { flex:0 0 auto; text-align:right; font-size:14px; color:var(--muted); }
+    .progress strong { display:block; color:var(--ink); font:700 28px/1 Georgia, serif; }
+    .list { display:grid; gap:18px; }
+    article { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:18px; box-shadow:0 3px 14px rgb(58 48 35 / 7%); }
+    article.reviewed { border-color:#b7b0a4; }
+    .top { display:flex; align-items:start; justify-content:space-between; gap:16px; margin-bottom:13px; }
+    h2 { margin:0 0 4px; font:700 24px/1.05 Georgia, serif; }
+    .meta { color:var(--muted); font-size:13px; line-height:1.4; }
+    .number { color:var(--muted); font-size:12px; letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; }
+    .spectrogram { position:relative; overflow:hidden; width:100%; border:1px solid #29251f; background:#0b0809; margin-bottom:5px; user-select:none; }
+    .spectrogram canvas { display:block; width:100%; height:auto; cursor:crosshair; touch-action:none; }
+    .brush-layer { position:absolute; z-index:3; inset:0; display:block; width:100%; height:100%; touch-action:none; }
+    .brush-layer .overlay { cursor:crosshair; }
+    .brush-layer .selection { fill:#fff; fill-opacity:.22; stroke:#fff; stroke-width:1.5px; }
+    .brush-layer .handle { fill:#fff; fill-opacity:.92; stroke:#17130f; stroke-width:1px; cursor:ew-resize; }
+    .brush-label { fill:#17130f; font:800 10px/1 ui-monospace, monospace; letter-spacing:.04em; pointer-events:none; paint-order:stroke; stroke:#fff; stroke-width:5px; stroke-linejoin:round; }
+    .playhead { position:absolute; z-index:4; top:0; bottom:0; left:0; width:2px; transform:translateX(-1px); background:#fff; box-shadow:0 0 0 1px rgb(0 0 0 / 45%); pointer-events:none; }
+    .playhead::before { content:""; position:absolute; top:0; left:50%; transform:translateX(-50%); border:6px solid transparent; border-top-color:#fff; }
+    .time-readout { position:absolute; z-index:3; top:7px; left:8px; padding:3px 6px; border-radius:5px; background:rgb(0 0 0 / 65%); color:#fff; font-size:11px; pointer-events:none; }
+    .frequency { position:absolute; z-index:2; right:6px; color:rgb(255 255 255 / 78%); font-size:10px; text-shadow:0 1px 2px #000; pointer-events:none; }
+    .frequency.high { top:5px; }
+    .frequency.low { bottom:5px; }
+    .time-axis { display:flex; justify-content:space-between; margin:0 2px 8px; color:var(--muted); font-size:11px; }
+    .range-tools { display:flex; align-items:center; gap:9px; min-height:34px; margin:-2px 0 10px; }
+    .range-tools button { min-height:34px; padding:0 11px; font-size:12px; }
+    .range-summary { color:var(--muted); font-size:12px; }
+    audio { display:block; width:100%; margin:0 0 14px; }
+    .choices { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+    button { min-height:48px; border:1px solid var(--line); border-radius:11px; background:#faf9f6; color:var(--ink); font:600 14px/1 ui-monospace, monospace; cursor:pointer; }
+    button:hover { border-color:#958c80; }
+    button[data-active="true"] { color:#fff; border-color:transparent; }
+    button[data-label="train"][data-active="true"] { background:var(--yes); }
+    button[data-label="not_train"][data-active="true"] { background:var(--no); }
+    button[data-label="unsure"][data-active="true"] { background:var(--maybe); }
+    .status { min-height:20px; margin-top:10px; color:var(--muted); font-size:12px; }
+    .empty { padding:40px 0; color:var(--muted); text-align:center; }
+    @media (max-width:620px) { main{width:min(100% - 18px, 920px); padding-top:24px} header{align-items:start} .progress{font-size:12px} article{padding:12px;border-radius:14px} .choices{gap:6px} button{font-size:12px} }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1 id="pageTitle">find the train</h1>
+      <p id="pageIntro">Drag across the exact train sound to highlight and save it. Click anywhere to seek; the expected passage should be near 1:00.</p>
+    </div>
+    <div class="progress"><strong id="reviewed">–</strong><span id="progressText">loading</span></div>
+  </header>
+  <section class="list" id="list" aria-live="polite"><div class="empty">loading clips…</div></section>
+</main>
+<script>
+(() => {
+  const api = '/avian/api/train-review.php';
+  const list = document.getElementById('list');
+  const reviewed = document.getElementById('reviewed');
+  const progressText = document.getElementById('progressText');
+  const requestedOperator = new URLSearchParams(location.search).get('operator');
+  let candidates = [];
+  let labels = {};
+
+  const esc = value => String(value).replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+  const timeLabel = iso => new Intl.DateTimeFormat('en-US', {hour:'numeric', minute:'2-digit', second:'2-digit'}).format(new Date(iso));
+  const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+
+  function setupSpectrogram(card) {
+    const shell = card.querySelector('.spectrogram');
+    const canvas = shell.querySelector('canvas');
+    const playhead = shell.querySelector('.playhead');
+    const readout = shell.querySelector('.time-readout');
+    const brushSvg = d3.select(shell.querySelector('.brush-layer'));
+    const brushGroup = brushSvg.select('.brush');
+    const audio = card.querySelector('audio');
+    const rangeButton = card.querySelector('[data-action="play-range"]');
+    const rangeSummary = card.querySelector('.range-summary');
+    const id = card.dataset.id;
+    const candidate = candidates.find(item => item.id === id) || {};
+    const operator = candidate.operator || 'train';
+    const context = canvas.getContext('2d', {willReadFrequently:true});
+    const image = new Image();
+
+    image.addEventListener('load', () => {
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      context.drawImage(image, 0, 0);
+      if (!window.d3?.interpolatePlasma) return;
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+      const invert = pixels.data[0] > 127;
+      const palette = Array.from({length:256}, (_, index) => {
+        const color = d3.rgb(d3.interpolatePlasma(index / 255));
+        return [color.r, color.g, color.b];
+      });
+      for (let offset = 0; offset < pixels.data.length; offset += 4) {
+        let intensity = invert ? 255 - pixels.data[offset] : pixels.data[offset];
+        intensity = Math.round(255 * Math.pow(intensity / 255, 0.78));
+        const color = palette[intensity];
+        pixels.data[offset] = color[0];
+        pixels.data[offset + 1] = color[1];
+        pixels.data[offset + 2] = color[2];
+        pixels.data[offset + 3] = 255;
+      }
+      context.putImageData(pixels, 0, 0);
+      configureBrush(canvas.width, canvas.height);
+    });
+    image.src = shell.dataset.source;
+
+    const duration = () => Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 120;
+    let range = labels[id]?.start_seconds != null && labels[id]?.end_seconds != null
+      ? {start:+labels[id].start_seconds, end:+labels[id].end_seconds}
+      : null;
+    let stopAtRangeEnd = false;
+    let brushWidth = 1200;
+    let brushHeight = 257;
+    let pointerStart = null;
+    let rangeBeforeBrush = null;
+    const paintRangeSummary = () => {
+      rangeButton.hidden = !range;
+      if (!range) {
+        rangeSummary.textContent = 'drag the spectrogram to mark the train sound';
+        return;
+      }
+      rangeSummary.textContent = `${operator} sound ${clock(range.start)}–${clock(range.end)}`;
+    };
+    const xToSeconds = value => Math.min(duration(), Math.max(0, value / brushWidth * duration()));
+    const secondsToX = value => value / duration() * brushWidth;
+    const positionBrushLabels = selection => {
+      const visible = Boolean(selection);
+      brushSvg.selectAll('.brush-label').attr('display', visible ? null : 'none');
+      if (!visible) return;
+      brushSvg.select('.brush-label.start').attr('x', Math.min(brushWidth - 43, selection[0] + 7)).attr('y', 17);
+      brushSvg.select('.brush-label.end').attr('x', Math.max(4, selection[1] - 35)).attr('y', 17);
+    };
+    const update = () => {
+      const value = Math.min(duration(), Math.max(0, audio.currentTime || 0));
+      playhead.style.left = `${100 * value / duration()}%`;
+      readout.textContent = `${clock(value)} / ${clock(duration())}`;
+      canvas.setAttribute('aria-valuenow', String(Math.round(value)));
+      canvas.setAttribute('aria-valuetext', `${clock(value)} of ${clock(duration())}`);
+      if (stopAtRangeEnd && range && value >= range.end) {
+        audio.pause();
+        audio.currentTime = range.end;
+        stopAtRangeEnd = false;
+      }
+      if (!audio.paused && !audio.ended) requestAnimationFrame(update);
+    };
+    const playFromClientX = clientX => {
+      const bounds = canvas.getBoundingClientRect();
+      const fraction = Math.min(1, Math.max(0, (clientX - bounds.left) / bounds.width));
+      audio.currentTime = fraction * duration();
+      stopAtRangeEnd = false;
+      audio.play();
+      update();
+    };
+    const brush = d3.brushX().handleSize(20)
+      .on('start', event => {
+        if (!event.sourceEvent) return;
+        pointerStart = {x:event.sourceEvent.clientX, target:event.sourceEvent.target};
+        rangeBeforeBrush = range ? {...range} : null;
+      })
+      .on('brush', event => {
+        if (!event.selection) return;
+        range = {start:xToSeconds(event.selection[0]), end:xToSeconds(event.selection[1])};
+        positionBrushLabels(event.selection);
+        paintRangeSummary();
+      })
+      .on('end', async event => {
+        if (!event.sourceEvent) {
+          positionBrushLabels(event.selection);
+          paintRangeSummary();
+          return;
+        }
+        const moved = pointerStart ? Math.abs(event.sourceEvent.clientX - pointerStart.x) : 0;
+        const startedOnHandle = pointerStart?.target?.classList?.contains('handle');
+        if (moved < 4 && !startedOnHandle) {
+          range = rangeBeforeBrush;
+          brushGroup.call(brush.move, range ? [secondsToX(range.start), secondsToX(range.end)] : null);
+          playFromClientX(event.sourceEvent.clientX);
+        } else if (event.selection && range && range.end - range.start >= 0.5) {
+          await saveLabel(card, 'train', range);
+        } else {
+          range = rangeBeforeBrush;
+          brushGroup.call(brush.move, range ? [secondsToX(range.start), secondsToX(range.end)] : null);
+        }
+        pointerStart = null;
+        rangeBeforeBrush = null;
+      });
+    function configureBrush(width, height) {
+      brushWidth = width;
+      brushHeight = height;
+      brushSvg.attr('viewBox', `0 0 ${width} ${height}`);
+      brush.extent([[0, 0], [width, height]]);
+      brushGroup.call(brush);
+      brushGroup.call(brush.move, range ? [secondsToX(range.start), secondsToX(range.end)] : null);
+    }
+    configureBrush(brushWidth, brushHeight);
+    canvas.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      audio.currentTime = Math.min(duration(), Math.max(0, audio.currentTime + (event.key === 'ArrowRight' ? 5 : -5)));
+      update();
+    });
+    ['loadedmetadata', 'timeupdate', 'seeked', 'ended'].forEach(name => audio.addEventListener(name, update));
+    audio.addEventListener('play', update);
+    rangeButton.addEventListener('click', () => {
+      if (!range) return;
+      audio.currentTime = range.start;
+      stopAtRangeEnd = true;
+      audio.play();
+      update();
+    });
+    paintRangeSummary();
+    update();
+  }
+
+  function updateProgress() {
+    const n = candidates.filter(c => labels[c.id]).length;
+    reviewed.textContent = `${n}/${candidates.length}`;
+    progressText.textContent = n === candidates.length ? 'complete' : 'reviewed';
+  }
+
+  function render() {
+    if (!candidates.length) {
+      list.innerHTML = '<div class="empty">No candidate clips are available.</div>';
+      updateProgress();
+      return;
+    }
+    list.innerHTML = candidates.map((c, index) => {
+      const current = labels[c.id]?.label || '';
+      const choices = [
+        ['train', 'yes, train'],
+        ['not_train', 'no train'],
+        ['unsure', 'unsure']
+      ].map(([value, text]) => `<button type="button" data-id="${esc(c.id)}" data-label="${value}" data-active="${current === value}">${text}</button>`).join('');
+      return `<article id="clip-${esc(c.id)}" data-id="${esc(c.id)}" class="${current ? 'reviewed' : ''}">
+        <div class="top"><div><h2>${esc(timeLabel(c.recorded_at))}</h2><div class="meta">observed passage ${esc(c.passage_window)}<br>${esc(c.context)}</div></div><div class="number">clip ${index + 1}</div></div>
+        <div class="spectrogram" data-source="${esc(c.spectrogram)}">
+          <canvas tabindex="0" role="slider" aria-label="Interactive spectrogram; click to seek or drag to select the train sound" aria-valuemin="0" aria-valuemax="120" aria-valuenow="0"></canvas>
+          <svg class="brush-layer" aria-label="Train sound range selector"><g class="brush"></g><text class="brush-label start">START</text><text class="brush-label end">END</text></svg>
+          <div class="playhead"></div><div class="time-readout">0:00 / 2:00</div>
+          <span class="frequency high">24 kHz</span><span class="frequency low">0 Hz</span>
+        </div>
+        <div class="time-axis"><span>0:00</span><span>1:00 expected passage</span><span>2:00</span></div>
+        <div class="range-tools"><button type="button" data-action="play-range" hidden>play selection</button><span class="range-summary">drag the spectrogram to mark the train sound</span></div>
+        <audio controls preload="none" src="${esc(c.audio)}"></audio>
+        <div class="choices">${choices}</div>
+        <div class="status" role="status">${current ? `saved: ${current.replace('_', ' ')}` : 'not reviewed'}</div>
+      </article>`;
+    }).join('');
+    list.querySelectorAll('article').forEach(setupSpectrogram);
+    updateProgress();
+  }
+
+  async function saveLabel(card, label, range = null) {
+    const id = card.dataset.id;
+    if (!range && label === 'train' && labels[id]?.start_seconds != null && labels[id]?.end_seconds != null) {
+      range = {start:+labels[id].start_seconds, end:+labels[id].end_seconds};
+    }
+    const status = card.querySelector('.status');
+    card.querySelectorAll('button[data-label]').forEach(button => button.disabled = true);
+    status.textContent = range ? `saving train ${clock(range.start)}–${clock(range.end)}…` : 'saving…';
+    const body = {id, label};
+    if (range) {
+      body.start_seconds = range.start;
+      body.end_seconds = range.end;
+    }
+    try {
+      const response = await fetch(api, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      labels[id] = data.entry || body;
+      card.classList.add('reviewed');
+      card.querySelectorAll('button[data-label]').forEach(button => button.dataset.active = String(button.dataset.label === label));
+      const candidate = candidates.find(item => item.id === id) || {};
+      status.textContent = range ? `saved ${candidate.operator || 'train'} sound ${clock(range.start)}–${clock(range.end)}` : `saved: ${label.replace('_', ' ')}`;
+      updateProgress();
+      return true;
+    } catch (error) {
+      status.textContent = 'save failed—please try again';
+      return false;
+    } finally {
+      card.querySelectorAll('button[data-label]').forEach(button => button.disabled = false);
+    }
+  }
+
+  list.addEventListener('click', async event => {
+    const button = event.target.closest('button[data-label]');
+    if (!button) return;
+    const label = button.dataset.label;
+    const card = button.closest('article');
+    await saveLabel(card, label);
+  });
+
+  fetch(api, {cache:'no-store'})
+    .then(response => { if (!response.ok) throw new Error(); return response.json(); })
+    .then(data => {
+      candidates = data.candidates || [];
+      if (requestedOperator) {
+        candidates = candidates.filter(candidate => String(candidate.operator || '').toLowerCase() === requestedOperator.toLowerCase());
+      }
+      labels = data.labels || {};
+      if (requestedOperator?.toLowerCase() === 'amtrak') {
+        document.getElementById('pageTitle').textContent = 'find the Amtrak train';
+        document.getElementById('pageIntro').textContent = 'Drag across the exact Lake Shore Limited sound to highlight and save it. Click anywhere to seek; the archived passage should be near 1:00.';
+      } else if (requestedOperator?.toLowerCase() === 'mbta') {
+        document.getElementById('pageTitle').textContent = 'find the MBTA train';
+      }
+      render();
+    })
+    .catch(() => { list.innerHTML = '<div class="empty">Could not load the review set.</div>'; });
+})();
+</script>
+</body>
+</html>

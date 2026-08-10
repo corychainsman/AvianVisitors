@@ -113,6 +113,7 @@ switch ($action) {
             . "FROM detections "
             . "WHERE Sci_Name = :sn "
             . "AND (julianday('now','localtime') - julianday(Date||' '||Time)) * 24 <= :hrs "
+            . "AND File_Name NOT LIKE '%-no-audio-%' "
             . "ORDER BY Confidence DESC LIMIT 1",
               [':sn' => $r['sci'], ':hrs' => $hours]
             );
@@ -127,7 +128,8 @@ switch ($action) {
         $sci = $_GET['sci'] ?? '';
         if ($sci === '') { http_response_code(400); echo json_encode(['error' => 'sci= required']); break; }
         $detections = rows($db,
-          "SELECT Date AS d, Time AS t, File_Name AS file, Confidence AS conf "
+          "SELECT Date AS d, Time AS t, File_Name AS file, Confidence AS conf, "
+        . "       CASE WHEN File_Name LIKE '%-no-audio-%' THEN 0 ELSE 1 END AS has_audio "
         . "FROM detections WHERE Sci_Name = :sn ORDER BY Date DESC, Time DESC LIMIT 500",
           [':sn' => $sci]
         );

@@ -22,8 +22,21 @@ http:// ${BIRDNETPI_URL} {
   # The HTML shell must always revalidate so UI deploys and re-rendered
   # illustrations show up on the next load; versioned assets (?v=) keep
   # caching normally.
-  @shell path / /index.html
+  @shell path / /index.html /collage /collage/ /birdnet /train-review /train-review/
   header @shell Cache-Control "no-cache"
+  @otamanifest path /inkplate-ota/manifest.txt
+  header @otamanifest Cache-Control "no-store"
+  @collage path /collage /collage/
+  rewrite @collage /index.html
+  @trainreview path /train-review /train-review/
+  rewrite @trainreview /avian/train-review/index.html
+  redir /train-audio /train-audio/ 308
+  handle_path /train-audio/* {
+    root * /config/BirdSongs/TrainRecordings
+    file_server browse
+  }
+  redir /birdnet/ /birdnet 308
+  rewrite /birdnet /index.php
   file_server browse
   handle /By_Date/* {
     file_server browse
@@ -69,8 +82,21 @@ http:// ${BIRDNETPI_URL} {
   # The HTML shell must always revalidate so UI deploys and re-rendered
   # illustrations show up on the next load; versioned assets (?v=) keep
   # caching normally.
-  @shell path / /index.html
+  @shell path / /index.html /collage /collage/ /birdnet /train-review /train-review/
   header @shell Cache-Control "no-cache"
+  @otamanifest path /inkplate-ota/manifest.txt
+  header @otamanifest Cache-Control "no-store"
+  @collage path /collage /collage/
+  rewrite @collage /index.html
+  @trainreview path /train-review /train-review/
+  rewrite @trainreview /avian/train-review/index.html
+  redir /train-audio /train-audio/ 308
+  handle_path /train-audio/* {
+    root * /config/BirdSongs/TrainRecordings
+    file_server browse
+  }
+  redir /birdnet/ /birdnet 308
+  rewrite /birdnet /index.php
   file_server browse
   handle /By_Date/* {
     file_server browse

@@ -1,0 +1,32 @@
+{
+  "Machina ferriviaria": {
+    "kind": "train",
+    "description": "An MBTA Commuter Rail train on the Worcester Line, heard passing between Wellesley Hills and Wellesley Square. It is included as a playful synthetic species alongside the birds identified by the microphone.",
+    "classification": "Worcester Line",
+    "category": "commuter rail",
+    "firstSeenLabel": "first heard",
+    "recordingsLabel": "Passages",
+    "capturedLabel": "passages captured",
+    "newLabel": "first run",
+    "poseLabels": ["locomotive", "cab car"],
+    "links": [
+      {"label": "line", "ariaLabel": "MBTA Worcester Line information", "url": "https://www.mbta.com/schedules/CR-Worcester"},
+      {"label": "schedule", "ariaLabel": "MBTA Worcester Line timetable", "url": "https://www.mbta.com/schedules/CR-Worcester/timetable"}
+    ]
+  },
+  "Machina ferriviaria amtrak": {
+    "kind": "train",
+    "description": "The Boston section of Amtrak's Lake Shore Limited, heard on the Worcester Line between Wellesley Hills and Wellesley Square. Realtime position data is provided by Amtraker.",
+    "classification": "Lake Shore Limited",
+    "category": "intercity rail",
+    "firstSeenLabel": "first heard",
+    "recordingsLabel": "Passages",
+    "capturedLabel": "passages captured",
+    "newLabel": "first run",
+    "poseLabels": ["locomotive", "coach"],
+    "links": [
+      {"label": "route", "ariaLabel": "Amtrak Lake Shore Limited route", "url": "https://www.amtrak.com/lake-shore-limited-train"},
+      {"label": "tracker", "ariaLabel": "Amtraker realtime train tracker", "url": "https://amtraker.com/"}
+    ]
+  }
+}

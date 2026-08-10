@@ -51,6 +51,20 @@ whitelist_species_list.txt
 .DS_Store
 
 # --- AvianVisitors: local-only material, deliberately not shipped ---
+# API credentials for the regional illustration-generation pipeline.
+/.env.images
+# Runtime API credentials used by Docker Compose.
+/.env
+/.venv-illustrations/
+# Docker runtime state, recordings, generated frames, and image-generation
+# intermediates. Keep only the empty config-directory marker in Git.
+/runtime/*
+!/runtime/config/
+/runtime/config/*
+!/runtime/config/.gitkeep
+# Private firmware-signing material and local Arduino build products.
+/secrets/
+/build/inkplate/
 # Claude Code session data
 .claude/
 # Large source / reference imagery kept on disk for working

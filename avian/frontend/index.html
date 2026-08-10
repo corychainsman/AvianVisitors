@@ -9,8 +9,8 @@
 <link rel="apple-touch-icon" href="./favicon.png">
 <!-- Apply the saved theme before first paint so dark mode doesn't flash
      light on load. The full switcher lives in Settings (writes bird:theme). -->
-<script>try{if(localStorage.getItem('bird:theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
-<link rel="stylesheet" href="./styles.css?v=r12">
+<script>try{if(localStorage.getItem('bird:theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}if(/^\/collage\/?$/.test(location.pathname))document.documentElement.classList.add('collage-only');</script>
+<link rel="stylesheet" href="./styles.css?v=r31">
 </head>
 <body class="av-local">
 <!-- Pill in the top-left slot, only visible on admin overlays
@@ -24,15 +24,43 @@
   collage
 </a>
 <header class="top">
-  <div class="window-pick" id="winPick" role="tablist">
-    <i class="seg-pill" aria-hidden="true"></i>
-    <button data-h="1"   type="button">1H</button>
-    <button data-h="12"  type="button">12H</button>
-    <button data-h="24"  type="button" aria-current="true">24H</button>
-    <button data-h="168" type="button">7D</button>
-    <button data-h="1000000" type="button">ALL</button>
+  <div class="top-left-controls">
+    <div class="window-pick" id="winPick" role="tablist" aria-label="Collage time range">
+      <i class="seg-pill" aria-hidden="true"></i>
+      <button data-h="1"   type="button">1H</button>
+      <button data-h="12"  type="button">12H</button>
+      <button data-h="24"  type="button" aria-current="true">24H</button>
+      <button data-h="168" type="button">7D</button>
+      <button data-h="1000000" type="button">ALL</button>
+    </div>
   </div>
-  <button class="menu-btn" id="menuBtn">menu</button>
+  <div class="top-right-controls">
+    <div class="atlas-controls" id="atlasControls" hidden>
+      <div class="atlas-sort" id="atlasSort" role="tablist" aria-label="sort atlas">
+        <i class="seg-pill" aria-hidden="true"></i>
+        <button data-sort="count" type="button" aria-current="true" aria-label="most heard">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M2 12 V8"/><path d="M6 12 V5"/><path d="M10 12 V3"/>
+          </svg>
+          <span class="tip">most heard</span>
+        </button>
+        <button data-sort="recent" type="button" aria-label="most recent">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="7" cy="7" r="5.2"/><path d="M7 4 V7 L9.2 8.3"/>
+          </svg>
+          <span class="tip">most recent</span>
+        </button>
+        <button data-sort="alpha" type="button" aria-label="alphabetical">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2.4 11.5 L4 4.5 L5.6 11.5"/><path d="M2.9 9.2 H5.1"/>
+            <path d="M8.2 11.5 V4.5 H10.4 a1.3 1.3 0 0 1 0 2.6 H8.2"/><path d="M8.2 7.1 H10.6 a1.5 1.5 0 0 1 0 3 H8.2"/>
+          </svg>
+          <span class="tip">a → z</span>
+        </button>
+      </div>
+    </div>
+    <button class="menu-btn" id="menuBtn">menu</button>
+  </div>
 </header>
 
 <aside id="menu-dd" aria-hidden="true">
@@ -48,10 +76,6 @@
 </aside>
 
 <main class="stage">
-  <header class="static-head">
-    <button type="button" class="pre" id="aboutLink">your birds</button>
-    <h1 id="staticTitle">Heard Recently</h1>
-  </header>
   <div class="views" id="views">
 
     <!-- ========== View 1 - Collage ========== -->
@@ -91,30 +115,6 @@
 
     <!-- ========== View 3 - Atlas ========== -->
     <section class="view" id="v2" aria-label="Atlas">
-      <div class="atlas-controls">
-        <div class="atlas-sort" id="atlasSort" role="tablist" aria-label="sort atlas">
-          <i class="seg-pill" aria-hidden="true"></i>
-          <button data-sort="count"  type="button" aria-current="true" aria-label="most heard">
-            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-              <path d="M2 12 V8"/><path d="M6 12 V5"/><path d="M10 12 V3"/>
-            </svg>
-            <span class="tip">most heard</span>
-          </button>
-          <button data-sort="recent" type="button" aria-label="most recent">
-            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="7" cy="7" r="5.2"/><path d="M7 4 V7 L9.2 8.3"/>
-            </svg>
-            <span class="tip">most recent</span>
-          </button>
-          <button data-sort="alpha"  type="button" aria-label="alphabetical">
-            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M2.4 11.5 L4 4.5 L5.6 11.5"/><path d="M2.9 9.2 H5.1"/>
-              <path d="M8.2 11.5 V4.5 H10.4 a1.3 1.3 0 0 1 0 2.6 H8.2"/><path d="M8.2 7.1 H10.6 a1.5 1.5 0 0 1 0 3 H8.2"/>
-            </svg>
-            <span class="tip">a → z</span>
-          </button>
-        </div>
-      </div>
       <div class="atlas-grid" id="atlasGrid"></div>
     </section>
 
@@ -158,18 +158,18 @@
         <div class="modal-stats">
           <div><span class="n" id="modalAllTime">-</span><span class="lbl">all time</span></div>
           <div id="modalWindowStat"><span class="n" id="modalWindow">-</span><span class="lbl" id="modalWindowLbl">window</span></div>
-          <div><span class="n" id="modalFirstSeen">-</span><span class="lbl">first heard</span></div>
+          <div><span class="n" id="modalFirstSeen">-</span><span class="lbl" id="modalFirstSeenLbl">first heard</span></div>
         </div>
         <p class="desc placeholder" id="modalDesc">Loading description...</p>
         <div class="modal-meta">
-          <span class="meta-item"><span class="k">genus</span><span class="v" id="modalGenus">-</span></span>
+          <span class="meta-item"><span class="k" id="modalClassLabel">genus</span><span class="v" id="modalGenus">-</span></span>
           <span class="meta-item"><span class="k">rarity</span><span class="v" id="modalRarity">-</span></span>
         </div>
       </div>
     </div>
     <div class="modal-recordings">
       <div class="rec-head">
-        <h3>Recordings</h3>
+        <h3 id="modalRecordingsTitle">Recordings</h3>
         <span class="rec-count" id="modalRecCount"></span>
       </div>
       <ol id="modalRecordings">
@@ -196,9 +196,9 @@
 
 <nav class="slider" id="slider" aria-label="View">
   <i class="seg-pill" aria-hidden="true"></i>
-  <button type="button" data-i="0" aria-current="true">collage</button>
-  <button type="button" data-i="1">stats</button>
-  <button type="button" data-i="2">atlas</button>
+  <button type="button" data-i="0" aria-current="true" aria-keyshortcuts="1">collage</button>
+  <button type="button" data-i="1" aria-keyshortcuts="2">stats</button>
+  <button type="button" data-i="2" aria-keyshortcuts="3">atlas</button>
 </nav>
 
 
@@ -213,6 +213,6 @@
   </div>
 </section>
 
-<script src="./apt.js?v=r12"></script>
+<script src="./apt.js?v=r33"></script>
 </body>
 </html>

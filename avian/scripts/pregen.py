@@ -211,6 +211,14 @@ ANTI_REF_TRIGGERS = (
 USER_AGENT = "AvianVisitors/1.0 (https://github.com/Twarner491/AvianVisitors)"
 
 
+class RateLimitError(RuntimeError):
+    """Raised to stop a generation run immediately on an API quota signal."""
+
+
+class RetryableServiceError(RuntimeError):
+    """Raised for transient Gemini HTTP 5xx responses."""
+
+
 def slugify(sci: str) -> str:
     """Match avian/frontend/apt.js slugify() exactly."""
     return re.sub(r"[^a-z0-9]+", "-", sci.lower()).strip("-")
@@ -297,7 +305,7 @@ def fetch_wikipedia_thumb(sci: str, com: str) -> tuple[bytes, str] | None:
             req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
             with urllib.request.urlopen(req, timeout=20) as r:
                 meta = json.loads(r.read())
-        except (urllib.error.HTTPError, urllib.error.URLError):
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
             continue
         # Prefer originalimage (higher res) over thumbnail.
         for k in ("originalimage", "thumbnail"):
@@ -308,7 +316,7 @@ def fetch_wikipedia_thumb(sci: str, com: str) -> tuple[bytes, str] | None:
                 req2 = urllib.request.Request(src, headers={"User-Agent": USER_AGENT})
                 with urllib.request.urlopen(req2, timeout=30) as r:
                     data = r.read()
-            except (urllib.error.HTTPError, urllib.error.URLError):
+            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
                 continue
             # Magic-byte sniff - URL extension is a hint, the bytes are
             # what Gemini's MIME check sees. Skip unknown formats rather
@@ -400,7 +408,10 @@ def gen_one(
     species_note: str | None = None,
     style_ref: Path | None = None,
 ) -> bytes:
-    """Single Gemini call with bounded retry on 429 + transient 5xx.
+    """Single Gemini call with no automatic HTTP retries.
+
+    A 429 is promoted to RateLimitError so the caller aborts the entire run;
+    it must never continue through the remaining species after a quota signal.
     Returns raw PNG bytes.
 
     positive_ref: Wikipedia/Audubon photo of the target species.
@@ -485,29 +496,27 @@ def gen_one(
         method="POST",
     )
 
-    backoff = 4.0
-    for attempt in range(4):
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            resp = json.loads(r.read())
+    except urllib.error.HTTPError as error:
+        detail = ""
         try:
-            with urllib.request.urlopen(req, timeout=180) as r:
-                resp = json.loads(r.read())
-            break
-        except urllib.error.HTTPError as e:
-            if e.code in (429, 500, 502, 503, 504) and attempt < 3:
-                ra = e.headers.get("Retry-After")
-                try:
-                    retry_after = float(ra) if ra else backoff
-                except (TypeError, ValueError):
-                    retry_after = backoff  # HTTP-date format, fall back
-                time.sleep(retry_after)
-                backoff *= 2
-                continue
-            raise
-        except urllib.error.URLError:
-            if attempt < 3:
-                time.sleep(backoff)
-                backoff *= 2
-                continue
-            raise
+            error_payload = json.loads(error.read())
+            detail = str(error_payload.get("error", {}).get("message", "")).strip()
+        except (json.JSONDecodeError, OSError):
+            pass
+        if error.code == 429:
+            raise RateLimitError(
+                "Gemini returned HTTP 429; stopping without retry"
+                + (f": {detail}" if detail else "")
+            ) from error
+        retryable = error.code in (500, 502, 503, 504)
+        error_type = RetryableServiceError if retryable else RuntimeError
+        raise error_type(
+            f"Gemini returned HTTP {error.code}"
+            + (f": {detail}" if detail else "")
+        ) from error
 
     for cand in resp.get("candidates", []):
         for part in cand.get("content", {}).get("parts", []):
@@ -565,8 +574,12 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="Re-render even if file exists")
     ap.add_argument("--no-refs", action="store_true",
                     help="Skip the Wikipedia reference fetch (faster, lower-quality output)")
-    ap.add_argument("--sleep", type=float, default=6.0,
-                    help="Seconds between API calls (default 6 = headroom under free-tier RPM cap)")
+    ap.add_argument("--sleep", type=float, default=21.0,
+                    help="Minimum seconds between request starts (default 21 = below 3 requests/minute)")
+    ap.add_argument("--retries", type=int, default=0,
+                    help="Retry transient HTTP 5xx failures this many times (default: 0)")
+    ap.add_argument("--retry-base-seconds", type=float, default=30.0,
+                    help="Initial exponential-backoff delay for --retries (default: 30)")
     ap.add_argument("--limit", type=int, default=0, help="Cap species count for testing")
     args = ap.parse_args()
 
@@ -618,7 +631,8 @@ def main() -> int:
 
     done = skipped_existing = failed = 0
     first_fail = None
-    for idx, (sci, com) in enumerate(species):
+    last_request_started = 0.0
+    for sci, com in species:
         slug = slugify(sci)
         pos_ref = None
         if not args.no_refs:
@@ -642,24 +656,48 @@ def main() -> int:
                 style_ref_path = args.styles / select_style_ref(sci, pose)
                 if not style_ref_path.exists():
                     style_ref_path = None
-                data = gen_one(gemini_key, prompt, sci, com, pose,
-                               positive_ref=pos_ref, anti_ref=anti,
-                               anti_ref_key=anti_key_for_call,
-                               species_note=notes.get(sci),
-                               style_ref=style_ref_path)
+                attempt = 0
+                while True:
+                    wait_seconds = args.sleep - (time.monotonic() - last_request_started)
+                    if wait_seconds > 0:
+                        time.sleep(wait_seconds)
+                    last_request_started = time.monotonic()
+                    try:
+                        data = gen_one(gemini_key, prompt, sci, com, pose,
+                                       positive_ref=pos_ref, anti_ref=anti,
+                                       anti_ref_key=anti_key_for_call,
+                                       species_note=notes.get(sci),
+                                       style_ref=style_ref_path)
+                        break
+                    except RetryableServiceError as error:
+                        if attempt >= max(0, args.retries):
+                            raise
+                        delay = max(0.0, args.retry_base_seconds) * (2 ** attempt)
+                        attempt += 1
+                        print(
+                            f"  [retry] {fname}: {error}; "
+                            f"waiting {delay:g}s ({attempt}/{args.retries})",
+                            flush=True,
+                        )
+                        time.sleep(delay)
                 path.write_bytes(data)
                 done += 1
                 refs_tag = "+ref" if pos_ref else ""
                 anti_tag = "+anti" if anti else ""
                 note_tag = "+note" if notes.get(sci) else ""
                 print(f"  [ok]   {fname} ({len(data)//1024} KB){refs_tag}{anti_tag}{note_tag}")
+            except RateLimitError as e:
+                print(f"  [stop] {fname}: {e}", file=sys.stderr)
+                print(
+                    f"generated {done} · skipped {skipped_existing} · "
+                    f"failed {failed}; stopped on rate limit",
+                    file=sys.stderr,
+                )
+                return 3
             except (urllib.error.HTTPError, urllib.error.URLError, RuntimeError) as e:
                 failed += 1
                 first_fail = first_fail or fname
                 print(f"  [fail] {fname}: {e}", file=sys.stderr)
-            # Don't sleep after the last species' last pose.
-            if not (idx == len(species) - 1 and pose == args.poses[-1]):
-                time.sleep(args.sleep)
 
     print(f"\ngenerated {done} · skipped {skipped_existing} · failed {failed}")
     if first_fail:

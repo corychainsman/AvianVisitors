@@ -54,7 +54,7 @@ def _frame_css(headline_px, eyebrow_px, lowercase, pad_top, pad_side, pad_bottom
         f".stage {{ padding: {pad_top}px {pad_side}px {pad_bottom}px !important;"
         f" box-sizing: border-box !important; justify-content: center !important; }}"
         f".views {{ flex: 0 0 auto !important; height: {collage_vh}vh !important; }}"
-        f".view#v0 {{ height: 100% !important; flex: 1 1 100% !important; padding: 6px 0 !important; }}"
+        f".view#v0 {{ height: 100% !important; flex: 1 1 100% !important; padding: 0 !important; }}"
         f".gcollage {{ max-width: none !important; }}"
         f".static-head {{ padding: 0 8px 14px !important; }}"
         f".static-head .pre {{ font-size: {eyebrow_px}px !important; }}"
@@ -142,7 +142,7 @@ def _make_cutout_handler(base, local_dir=None):
     return handler
 
 
-def _make_js_handler(xbias, ybias, count_exp, pad, auth, misses):
+def _make_js_handler(xbias, ybias, count_exp, pad, packing_scale, packing_cap, auth, misses):
     """Rewrite the collage tunables inside the page's apt.js at capture time."""
     def handler(route):
         try:
@@ -151,7 +151,9 @@ def _make_js_handler(xbias, ybias, count_exp, pad, auth, misses):
             for pat, repl in ((r"var xBias = narrow \? 1 : T\.ellipseAspectBias;", f"var xBias = {xbias};"),
                               (r"var yBias = narrow \? 1\.7 : 1;", f"var yBias = {ybias};"),
                               (r"countExp:\s*[\d.]+,", f"countExp: {count_exp},"),
-                              (r"var pad = narrow \? Math\.max\(1, COLLAGE_PAD - 1\) : COLLAGE_PAD;", f"var pad = {pad};")):
+                              (r"var pad = narrow \? Math\.max\(1, COLLAGE_PAD - 1\) : COLLAGE_PAD;", f"var pad = {pad};"),
+                              (r"var budget = vpArea \* T\.packingBudgetFrac;",
+                               f"var budget = vpArea * Math.min({packing_cap}, T.packingBudgetFrac * {packing_scale});")):
                 js, n = re.subn(pat, repl, js)
                 if not n:
                     misses.append(pat)
@@ -164,11 +166,15 @@ def _make_js_handler(xbias, ybias, count_exp, pad, auth, misses):
 
 def shoot(url, out, *, title=None, subtitle=None, vw=600, vh=800, dsf=2,
           headline_px=42, eyebrow_px=18, lowercase=False,
-          mat=0.04, collage_vh=52, cluster_xbias=1.0, cluster_ybias=1.2,
-          count_exp=0.4, cluster_pad=1, small_floor=0.04, window_hours=None,
+          mat=0.04, collage_vh=96, cluster_xbias=1.0, cluster_ybias=1.2,
+          count_exp=0.4, cluster_pad=1, packing_scale=1.0, packing_cap=1.0,
+          small_floor=0.04, window_hours=None,
           timeout_ms=45000, user=None, password=None, species=None, cutout_base=None,
           cutout_local=None, empty_text="listening for birds…"):
-    pad_side, pad_top, pad_bottom = int(vw * mat), int(vh * mat * 0.92), int(vh * mat)
+    pad_side = int(vw * mat)
+    max_vertical_pad = max(0, int(vh * (1 - collage_vh / 100) / 2))
+    pad_top = min(int(vh * mat * 0.92), max_vertical_pad)
+    pad_bottom = min(int(vh * mat), max_vertical_pad)
     auth = "Basic " + base64.b64encode(f"{user}:{password or ''}".encode()).decode() if user else None
 
     with sync_playwright() as p:
@@ -180,7 +186,8 @@ def shoot(url, out, *, title=None, subtitle=None, vw=600, vh=800, dsf=2,
             page = browser.new_context(**ctx_kw).new_page()
             misses = []
             page.route("**/birdnet-api.php**", _make_api_handler(small_floor, window_hours, auth, species))
-            page.route("**/apt.js*", _make_js_handler(cluster_xbias, cluster_ybias, count_exp, cluster_pad, auth, misses))
+            page.route("**/apt.js*", _make_js_handler(cluster_xbias, cluster_ybias, count_exp, cluster_pad,
+                                                       packing_scale, packing_cap, auth, misses))
             if cutout_base:
                 page.route("**/cutout.php*", _make_cutout_handler(cutout_base, cutout_local))
 
@@ -274,12 +281,16 @@ def main():
     ap.add_argument("--eyebrow-px", type=int, default=None,
                     help="eyebrow font px; default 18 for the mic, 17 for --bird-weather")
     ap.add_argument("--mat", type=float, default=0.04)
-    ap.add_argument("--collage-vh", type=float, default=52)
+    ap.add_argument("--collage-vh", type=float, default=96)
     ap.add_argument("--cluster-xbias", type=float, default=1.0)
     ap.add_argument("--cluster-ybias", type=float, default=1.2)
     ap.add_argument("--count-exp", type=float, default=None,
                     help="count-to-size exponent; default 0.4 for the mic, 1.0 for --bird-weather")
     ap.add_argument("--cluster-pad", type=int, default=1)
+    ap.add_argument("--packing-scale", type=float, default=1.0,
+                    help="frame-only multiplier for the collage area budget")
+    ap.add_argument("--packing-cap", type=float, default=1.0,
+                    help="maximum frame-only collage area budget fraction")
     ap.add_argument("--small-floor", type=float, default=0.04)
     ap.add_argument("--window-hours", type=int)
     ap.add_argument("--bird-weather", action="store_true",
@@ -310,7 +321,8 @@ def main():
                                   ("eyebrow_px", a.eyebrow_px)) if v is not None}
         look.update(vw=a.width, vh=a.height, dsf=a.dsf, mat=a.mat, collage_vh=a.collage_vh,
                     cluster_xbias=a.cluster_xbias, cluster_ybias=a.cluster_ybias,
-                    cluster_pad=a.cluster_pad, small_floor=a.small_floor, lowercase=a.lowercase,
+                    cluster_pad=a.cluster_pad, packing_scale=a.packing_scale,
+                    packing_cap=a.packing_cap, small_floor=a.small_floor, lowercase=a.lowercase,
                     window_hours=a.window_hours, user=a.user, password=a.password)
         try:
             shoot_birdweather(a.out, species, title=a.title, subtitle=a.subtitle,
@@ -329,7 +341,7 @@ def main():
               headline_px=headline_px, eyebrow_px=eyebrow_px, lowercase=a.lowercase,
               mat=a.mat, collage_vh=a.collage_vh, cluster_xbias=a.cluster_xbias,
               cluster_ybias=a.cluster_ybias, count_exp=count_exp, cluster_pad=a.cluster_pad,
-              small_floor=a.small_floor,
+              packing_scale=a.packing_scale, packing_cap=a.packing_cap, small_floor=a.small_floor,
               window_hours=a.window_hours, timeout_ms=a.timeout, user=a.user, password=a.password)
     except Exception as e:
         print(f"shoot failed: {e}", file=sys.stderr)

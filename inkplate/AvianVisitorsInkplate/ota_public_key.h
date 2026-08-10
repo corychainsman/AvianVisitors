@@ -1,0 +1,21 @@
+#pragma once
+
+#include <Arduino.h>
+
+// Public half of the Inkplate OTA signing key. The private half never enters
+// the firmware, Git, Docker context, or web server.
+const uint8_t kOtaPublicKey[] PROGMEM = R"AVIANKEY(-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAvCegcg/JRtwMnFjweqld
+ch9qIM9p1reUQCMRM2ZHANetqTMkS3SNyn6geIo6Cd6gjLIx2PsGiY1zkfAwVgvv
+E6L7IPQp/65nxBebld9k7p0M3deNr0BMh8kMbMiD2GwHfp7zUWvKzScVmE6txuGG
+zUf50YXnAAulDjGlh0GSox0e8t3AlNkW0fbxJ7fKlSsK3CeAw0gM8nRLLjpqDpbz
+L1J9mU+Bdvi0d98wZn9MkLKe/LVIV9dFGnhUx1Rog9dG6DslBZs13mVVxbJ50pEC
+vvzipiaIWWyKk2HiXIY3KOLdvbmtoUGeXG6UiH4/p9flCE9ZTRQt0hNv7z1Kz16r
+cM4/h9pAgJats6ITQwdFaulaJ3ZDHaTmUnYczTAMdPtWS9z8VcOoomhK+8J9ElBd
+p6EQBrNFtia/lc2FugIpK8Xl+XD8jTUOkmPvB2Veasf9hgYZrveHbLy63uGCguUT
+q/o4Pcz1NBlHLFhjLBzkXNhIzX5YxUelnmfNrM7ailXdis42x9yxXFXGY1gIWZX2
+T9DzWvmY6FQTBZLmRwBy3zk2OaxZEus0itikRDzno8cyFIfyuW/zZiLIGI1ZTDh8
+pIVbC3W2C2fRUCtzT5tOligO4vo/nG42ds5qgEC24vTG/R5bagwr2hyjBySjmPHq
+T7yjkHMK/ZEPQmkLFmUJPmECAwEAAQ==
+-----END PUBLIC KEY-----
+)AVIANKEY";

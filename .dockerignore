@@ -1,0 +1,17 @@
+**
+!Dockerfile
+!avian/
+!avian/**
+avian/assets/references/
+!frame/
+!frame/**
+!scripts/
+scripts/**
+!scripts/link_webroot.sh
+!scripts/update_caddyfile.sh
+!scripts/build_train_interval_review.py
+!scripts/backfill_train_history.py
+!scripts/build_amtrak_interval_review.py
+!scripts/import_train_review.py
+!docker/
+!docker/**

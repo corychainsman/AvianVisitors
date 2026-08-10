@@ -2,7 +2,7 @@
   var PLACEHOLDER = [{ "sci": "Calypte anna", "com": "Anna's Hummingbird", "featured": true }, { "sci": "Passer domesticus", "com": "House Sparrow" }, { "sci": "Haemorhous mexicanus", "com": "House Finch" }, { "sci": "Turdus migratorius", "com": "American Robin" }, { "sci": "Zenaida macroura", "com": "Mourning Dove" }, { "sci": "Spinus psaltria", "com": "Lesser Goldfinch" }, { "sci": "Zonotrichia leucophrys", "com": "White-crowned Sparrow" }, { "sci": "Aphelocoma californica", "com": "California Scrub-Jay" }, { "sci": "Mimus polyglottos", "com": "Northern Mockingbird" }, { "sci": "Sayornis nigricans", "com": "Black Phoebe" }, { "sci": "Larus occidentalis", "com": "Western Gull" }, { "sci": "Corvus brachyrhynchos", "com": "American Crow" }];
   // Bumped whenever the offline sketch build changes, so the browser
   // doesn't keep a stale cache after we regenerate the sketches.
-  var SKETCH_VERSION = 'r12'; // r12: 84 eastern NA birds (PR #23) refined + re-cut. r11: full library restyle: every species
+  var SKETCH_VERSION = 'r23'; // r23: hand-drawn GE P42DC matching the bird and MBTA illustration style. r22: silver GE P42DC Genesis Amtrak locomotive. r21: Amtrak Lake Shore Limited synthetic species. r20: MBTA synthetic species and two train poses. r17: /collage hours parameter. r16: viewport-only /collage display. r15: remove collage masthead. r14: species-specific eBird links. r13: Wellesley, MA regional set added. r12: 84 eastern NA birds (PR #23) refined + re-cut. r11: full library restyle: every species
   // re-rendered (perched + flight) with clean cutouts.
   // Cache-bust for /api/img - bump whenever a bird gets re-rendered via
   // /api/regen or whenever you need every CF DC to drop its cached copy.
@@ -10,7 +10,7 @@
   // equivalent to a global cache purge for /api/img. (caches.default
   // .delete() in the worker only affects ONE colo at a time, so a
   // versioned URL is the only reliable way to invalidate everywhere.)
-  var IMG_VERSION = 'r12'; // r12: 84 eastern NA birds (PR #23) refined + re-cut. r11: full library restyle: every species re-rendered
+  var IMG_VERSION = 'r23'; // r23: hand-drawn GE P42DC matching the bird and MBTA illustration style. r22: silver GE P42DC Genesis Amtrak locomotive. r21: Amtrak Lake Shore Limited synthetic species. r20: MBTA synthetic species and two train poses. r17: /collage hours parameter. r16: viewport-only /collage display. r15: remove collage masthead. r14: species-specific eBird links. r13: Wellesley, MA regional set added. r12: 84 eastern NA birds (PR #23) refined + re-cut. r11: full library restyle: every species re-rendered
   // with clean cutouts, so drop every cached copy.
 
   // ---- Sliding pill helper ----
@@ -53,26 +53,6 @@
   var btns = [].slice.call(slider.querySelectorAll('button'));
   var winPick = document.getElementById('winPick');
 
-  // Each view's title text. The shared static-head shows one of these
-  // based on the current view; identical adjacent values mean the title
-  // stays put with no fade (collage and stats both say Heard Recently).
-  var VIEW_TITLES = ['Heard Recently', 'Heard Recently', 'Avian Visitors'];
-  var staticHead = document.querySelector('.static-head');
-  var staticTitle = document.getElementById('staticTitle');
-  function setTitleForView(i) {
-    var next = VIEW_TITLES[i];
-    if (!staticTitle || staticTitle.textContent === next) return;
-    // Fade out -> swap text -> fade in. The opacity transition is 240ms;
-    // we swap at ~half that so the eye doesn't catch the text change.
-    staticHead.classList.add('swap-out');
-    setTimeout(function () {
-      staticTitle.textContent = next;
-      // Force reflow before removing class so the transition restarts.
-      void staticHead.offsetWidth;
-      staticHead.classList.remove('swap-out');
-    }, 220);
-  }
-
   // The views slide horizontally over SLIDE_MS (see .views transition). For
   // stats + atlas we hold the load-in hidden until the slide has essentially
   // settled, so you watch the content populate *in* the view rather than it
@@ -83,8 +63,27 @@
   var SLIDE_MS = 480;
   var SWITCH_LEAD = SLIDE_MS - 100;   // atlas
   var STATS_LEAD = SLIDE_MS - 200;    // stats - begin a touch sooner
+  var VIEW_TABS = ['collage', 'stats', 'atlas'];
   var currentView = 0;                // collage shows first (no go() needed)
-  function go(i) {
+  function tabIndexFromUrl() {
+    var tab = new URLSearchParams(location.search).get('tab');
+    var i = VIEW_TABS.indexOf((tab || '').toLowerCase());
+    return i < 0 ? 0 : i;
+  }
+  function syncTabUrl(i, replace) {
+    if (document.documentElement.classList.contains('collage-only')) return;
+    var url = new URL(location.href);
+    var tab = VIEW_TABS[i];
+    if (url.searchParams.get('tab') === tab) return;
+    url.searchParams.set('tab', tab);
+    history[replace ? 'replaceState' : 'pushState'](
+      history.state,
+      '',
+      url.pathname + url.search + url.hash
+    );
+  }
+  function go(i, options) {
+    options = options || {};
     i = Math.max(0, Math.min(2, i));
     // Only a genuine view *switch* replays the entrance. go() also fires when
     // a card is expanded (it sets the #sci= hash, which routes through go(2))
@@ -93,8 +92,16 @@
     currentView = i;
     views.style.transform = 'translateX(-' + (i * 100) + '%)';
     btns.forEach(function (b, j) { b.setAttribute('aria-current', j === i ? 'true' : 'false'); });
+    var atlasControls = document.getElementById('atlasControls');
+    if (atlasControls) atlasControls.hidden = (i !== 2);
     syncPill(slider);
-    setTitleForView(i);
+    if (i === 2) {
+      requestAnimationFrame(function () {
+        var sort = document.getElementById('atlasSort');
+        if (sort) syncPill(sort);
+      });
+    }
+    if (!options.skipUrl) syncTabUrl(i, !!options.replaceUrl);
     if (!switching) return;
     // Replay the view's entrance animation on switch (collage bloom,
     // stats left-to-right, atlas row-by-row).
@@ -103,6 +110,25 @@
     else if (i === 2) playAtlasEntrance(SWITCH_LEAD);
   }
   btns.forEach(function (b) { b.addEventListener('click', function () { go(+b.dataset.i); }); });
+  // Deep-link the initial view and canonicalise a missing/unknown tab to
+  // ?tab=collage without creating an extra Back-button entry. A species
+  // detail hash always belongs to Atlas.
+  go(readHash() ? 2 : tabIndexFromUrl(), { replaceUrl: true });
+  window.addEventListener('popstate', function () {
+    go(readHash() ? 2 : tabIndexFromUrl(), { skipUrl: true });
+  });
+  // Number-row / numpad shortcuts mirror the three view buttons. Ignore
+  // modified keystrokes and editable controls so typing or browser/system
+  // shortcuts can never switch the dashboard unexpectedly.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.defaultPrevented || ev.ctrlKey || ev.metaKey || ev.altKey || ev.shiftKey) return;
+    if (!/^[123]$/.test(ev.key)) return;
+    var target = ev.target;
+    if (target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (document.documentElement.classList.contains('collage-only')) return;
+    ev.preventDefault();
+    go(+ev.key - 1);
+  });
 
   // ---- Window picker ----
   // Persist selections across reloads so a returning visitor lands on the
@@ -146,7 +172,47 @@
   }
   applyTheme(readLS('bird:theme', 'light'));
   var winBtns = [].slice.call(winPick.querySelectorAll('button'));
-  var currentHours = +readLS('bird:window', '24') || 24;
+  var isCollageDisplay = /^\/collage\/?$/.test(location.pathname);
+  var trainToggle = document.getElementById('trainToggle');
+  var trainParam = new URLSearchParams(location.search).get('trains');
+  var trainsRequested = /^(1|true|on|yes)$/i.test(trainParam || '');
+  var trainsDenied = /^(0|false|off|no)$/i.test(trainParam || '');
+  // /collage defaults to birds-only but can opt in explicitly with
+  // ?trains=true (or 1/on/yes). Inkplate frame rendering explicitly produces
+  // both variants, so browser localStorage can never leak into either image.
+  var trainsLockedOff = trainsDenied || (isCollageDisplay && !trainsRequested);
+  var includeTrains = isCollageDisplay
+    ? trainsRequested
+    : (!trainsLockedOff && readLS('bird:includeTrains', '0') === '1');
+  function syncTrainToggle() {
+    if (!trainToggle) return;
+    trainToggle.setAttribute('aria-pressed', includeTrains ? 'true' : 'false');
+    trainToggle.textContent = includeTrains ? 'hide trains' : 'show trains';
+  }
+  function wireTrainToggle() {
+    if (!trainToggle || trainToggle.__trainToggleWired) return;
+    trainToggle.__trainToggleWired = true;
+    trainToggle.addEventListener('click', function () {
+      if (trainsLockedOff) return;
+      includeTrains = !includeTrains;
+      writeLS('bird:includeTrains', includeTrains ? '1' : '0');
+      syncTrainToggle();
+      renderCollageFromData(true);
+      closeDd();
+    });
+  }
+  syncTrainToggle();
+  wireTrainToggle();
+  var currentHours = isCollageDisplay ? 24 : (+readLS('bird:window', '24') || 24);
+  if (isCollageDisplay) {
+    var hoursParam = new URLSearchParams(location.search).get('hours');
+    if (hoursParam && hoursParam.toLowerCase() === 'all') {
+      currentHours = 1000000;
+    } else if (hoursParam && /^\d+$/.test(hoursParam)) {
+      var requestedHours = +hoursParam;
+      if (requestedHours >= 1 && requestedHours <= 1000000) currentHours = requestedHours;
+    }
+  }
   winBtns.forEach(function (b) {
     b.setAttribute('aria-current', (+b.dataset.h === currentHours) ? 'true' : 'false');
   });
@@ -165,6 +231,10 @@
   var atlasSortEl = document.getElementById('atlasSort');
   var atlasSortBtns = atlasSortEl ? [].slice.call(atlasSortEl.querySelectorAll('button')) : [];
   window.__atlasSort = readLS('bird:atlasSort', 'count');
+  if (['count', 'recent', 'alpha'].indexOf(window.__atlasSort) < 0) {
+    window.__atlasSort = 'count';
+    writeLS('bird:atlasSort', window.__atlasSort);
+  }
   atlasSortBtns.forEach(function (b) {
     b.setAttribute('aria-current', (b.dataset.sort === window.__atlasSort) ? 'true' : 'false');
   });
@@ -825,6 +895,7 @@
   // a "no detections in this window" message.
   function renderCollageFromData(animate) {
     var items = (DATA.recent && DATA.recent.species) || [];
+    if (!includeTrains) items = items.filter(function (s) { return !isTrainSpecies(s); });
     renderCollage(items, animate);
   }
   var rTimer;
@@ -927,11 +998,10 @@
 
   // Editorial detection timeline. One evenly-spaced column per species,
   // ordered oldest -> newest by last detection (x = time). Each species
-  // owns a cell, so the black squares never overlap and a square fills
-  // its column width - neighbours touch at the shared gridline. The
-  // square's height up the column encodes detection count; a small
-  // rotated label (common + scientific name) sits at the column's
-  // bottom, and each column carries its own timestamp on the x-axis.
+  // owns a cell, so its pale grey bar never overlaps its neighbours.
+  // Bar height encodes detection count, and the perched cutout sits inside
+  // the fill. A rotated label (common + scientific name) follows the bar's
+  // top, and each column carries its own timestamp on the x-axis.
   function drawHistograms(animate) {
     var tl = document.getElementById('statsTimeline');
     if (!tl) return;
@@ -970,13 +1040,15 @@
     // Desktop: columns split the available width evenly.
     var colW = isMobile ? MIN_COL : (containerW / C);
     var plotW = isMobile ? Math.max(containerW, C * colW) : containerW;
-    // Square fills its column so adjacent squares touch at the shared
-    // gridline; capped so a few species don't render as giant blocks.
-    var sq = Math.max(6, Math.min(colW, isMobile ? 60 : 48));
-    var LABEL_GAP = 6;       // px between a square's top and its label
-    var SPAN = 0.55;         // squares occupy the bottom this fraction of
+    // Bars fill their column slot, with a slight inset so the grid remains
+    // visible between neighbours. Their quantitative height has a square
+    // visual floor: even a one-count species gets the old marker-sized tile
+    // needed to show its perched cutout.
+    var barW = Math.max(6, Math.min(colW - 2, isMobile ? 58 : 46));
+    var LABEL_GAP = 6;       // px between a bar's top and its label
+    var SPAN = 0.55;         // bars occupy the bottom this fraction of
     // the plot by count (y = quantity); the
-    // rotated label floats just above each square.
+    // rotated label floats just above each bar.
 
     // Y-axis quantity ticks: 0..maxN, with maxN pinned on the top tick.
     var ticks = [];
@@ -1012,11 +1084,14 @@
     species.forEach(function (s, i) {
       var centerPct = (i + 0.5) / C * 100;
       var n = +s.n || 0;
-      var bottomPct = (n / maxN) * SPAN * 100;   // square height = quantity
+      var barPct = (n / maxN) * SPAN * 100;
+      var barSize = 'max(' + barPct.toFixed(1) + '%, ' + barW.toFixed(1) + 'px)';
       cols += ''
         + '<div class="stats-tl-col" data-sci="' + s.sci + '" style="left:' + centerPct.toFixed(3) + '%;width:' + colW.toFixed(2) + 'px">'
-        + '<div class="stats-tl-square" style="bottom:' + bottomPct.toFixed(1) + '%;width:' + sq.toFixed(1) + 'px;height:' + sq.toFixed(1) + 'px"></div>'
-        + '<div class="stats-tl-label" style="bottom:calc(' + bottomPct.toFixed(1) + '% + ' + (sq + LABEL_GAP) + 'px)"><span class="com">' + (s.com || s.sci) + '</span><span class="sci">' + s.sci + '</span></div>'
+        + '<div class="stats-tl-square" style="width:' + barW.toFixed(1) + 'px;height:' + barSize + '">'
+        + '<img class="stats-tl-bird" src="' + sketchSrc(s.sci, 1) + '" alt="" aria-hidden="true">'
+        + '</div>'
+        + '<div class="stats-tl-label" style="bottom:calc(' + barSize + ' + ' + LABEL_GAP + 'px)"><span class="com">' + (s.com || s.sci) + '</span><span class="sci">' + s.sci + '</span></div>'
         + '</div>';
       var lab = fmtTs(parseTs(s.last_seen));
       if (lab) xaxis += '<span class="stats-tl-xtick" style="left:' + centerPct.toFixed(3) + '%">' + lab + '</span>';
@@ -1110,24 +1185,42 @@
   }
 
   // ---- Atlas: field-guide card grid ----
-  // eBird species codes for placeholder birds. eBird's URL scheme is
+  // eBird's URL scheme is
   // https://ebird.org/species/<code>/, where <code> is a stable 6-char
-  // taxonomy code. Hardcoded here for the local-California demo set;
-  // a real implementation can look these up via the eBird taxon API.
-  var EBIRD_CODES = {
-    'Calypte anna': 'annhum',
-    'Passer domesticus': 'houspa',
-    'Haemorhous mexicanus': 'houfin',
-    'Turdus migratorius': 'amerob',
-    'Zenaida macroura': 'moudov',
-    'Spinus psaltria': 'lesgol',
-    'Zonotrichia leucophrys': 'whcspa',
-    'Aphelocoma californica': 'cascj1',
-    'Mimus polyglottos': 'normoc',
-    'Sayornis nigricans': 'blkpho',
-    'Larus occidentalis': 'wegull',
-    'Corvus brachyrhynchos': 'amecro'
-  };
+  // taxonomy code. Load the bundled BirdNET-Pi mapping before the initial
+  // atlas render, so card hrefs point directly to their species pages without
+  // any runtime eBird API traffic.
+  var EBIRD_CODES = {};
+  var ebirdCodesReady = fetch('./ebird-codes.json?v=' + IMG_VERSION)
+    .then(function (r) {
+      if (!r.ok) throw new Error('eBird code map HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (codes) { EBIRD_CODES = codes || {}; })
+    .catch(function (e) { console.warn('eBird code map failed', e); });
+
+  // Synthetic non-bird sounds use the same detection model while supplying
+  // their own language, description, poses, and outbound resources.
+  var CUSTOM_ENTITIES = {};
+  var customEntitiesReady = fetch('./custom-entities.json?v=' + IMG_VERSION)
+    .then(function (r) {
+      if (!r.ok) throw new Error('custom entity map HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (entities) { CUSTOM_ENTITIES = entities || {}; })
+    .catch(function (e) { console.warn('custom entity map failed', e); });
+
+  function entityMeta(sci) {
+    return CUSTOM_ENTITIES[sci] || null;
+  }
+
+  function isTrainSpecies(species) {
+    var sci = typeof species === 'string' ? species : ((species && species.sci) || '');
+    var meta = CUSTOM_ENTITIES && CUSTOM_ENTITIES[sci];
+    // The prefix fallback makes filtering deterministic even if the metadata
+    // request is still in flight or temporarily unavailable.
+    return !!(meta && meta.kind === 'train') || /^Machina ferriviaria(?:\s|$)/i.test(sci);
+  }
 
   function wikiUrl(sci) {
     return 'https://en.wikipedia.org/wiki/' + encodeURIComponent(sci.replace(/ /g, '_'));
@@ -1135,6 +1228,15 @@
   function ebirdUrl(sci) {
     var code = EBIRD_CODES[sci];
     return code ? 'https://ebird.org/species/' + code : 'https://ebird.org/explore';
+  }
+
+  function entityLinks(sci) {
+    var meta = entityMeta(sci);
+    if (meta && Array.isArray(meta.links) && meta.links.length >= 2) return meta.links.slice(0, 2);
+    return [
+      { label: 'wiki', ariaLabel: 'Wikipedia', url: wikiUrl(sci) },
+      { label: 'ebird', ariaLabel: 'eBird', url: ebirdUrl(sci) }
+    ];
   }
 
   // Tiny inline icons - monochrome, ink-only, match the page palette.
@@ -1196,6 +1298,8 @@
     var now = Date.now();
     var windowStartMs = now - currentHours * 3600000;
     grid.innerHTML = species.map(function (s) {
+      var meta = entityMeta(s.sci);
+      var links = entityLinks(s.sci);
       var total = +s.n || 0;
       var win = winBySci[s.sci] || 0;
       var firstMs = Date.parse((s.first_seen || '').replace(' ', 'T'));
@@ -1213,7 +1317,7 @@
         + '<div><span class="n">' + fmtNK(total) + '</span><span class="lbl-inline">all time</span></div>';
       return ''
         + '<article class="bird-card" data-sci="' + s.sci + '" data-audio="' + audioSrc + '">'
-        + (isLifer ? '<span class="lifer-badge" title="new to the life list in this window">lifer</span>' : '')
+        + (isLifer ? '<span class="lifer-badge" title="new in this window">' + (meta && meta.newLabel ? meta.newLabel : 'lifer') + '</span>' : '')
         + '<div class="stat">' + statRows + '</div>'
         + '<div class="img-wrap">'
         + '<img loading="lazy" decoding="async" src="' + sketchSrc + '" alt="' + s.com + '">'
@@ -1225,8 +1329,8 @@
         + '<button type="button" class="chip play" data-action="play" aria-label="play recording">'
         + ICON_PLAY + '<span>play</span>'
         + '</button>'
-        + '<a class="chip ext" href="' + wikiUrl(s.sci) + '" target="_blank" rel="noopener" aria-label="Wikipedia">wiki</a>'
-        + '<a class="chip ext" href="' + ebirdUrl(s.sci) + '" target="_blank" rel="noopener" aria-label="eBird">ebird</a>'
+        + '<a class="chip ext" href="' + links[0].url + '" target="_blank" rel="noopener" aria-label="' + links[0].ariaLabel + '">' + links[0].label + '</a>'
+        + '<a class="chip ext" href="' + links[1].url + '" target="_blank" rel="noopener" aria-label="' + links[1].ariaLabel + '">' + links[1].label + '</a>'
         + '</div>'
         + '</article>';
     }).join('');
@@ -1424,7 +1528,8 @@
   // Kick off the initial fetch. Renders pull from DATA as soon as it
   // populates; until then the page sits with empty histograms + lists.
   // animate=true so the collage blooms in on first load.
-  refreshAll(true);
+  var appReady = Promise.all([ebirdCodesReady, customEntitiesReady])
+    .then(function () { return refreshAll(true); });
 
   // Hook into the window picker so the data refetches on change. Pass
   // animate=true so the collage blooms (the silent poll passes nothing).
@@ -1553,7 +1658,13 @@
       // real time. No separate toggle.
       + '<canvas class="live-spectro" id="liveSpectro" width="600" height="120" aria-label="live spectrogram"></canvas>'
       + '<div class="live-status" id="liveStatus"></div>'
-      + '<div class="menu-links">' + linksHtml + '</div>';
+      + '<div class="menu-links">' + linksHtml
+      + '<button class="train-menu-toggle" id="trainToggle" type="button" aria-pressed="false"></button>'
+      + '</div>';
+
+    trainToggle = document.getElementById('trainToggle');
+    syncTrainToggle();
+    wireTrainToggle();
 
     // Clicking a nav link (settings / system / logs / tools) collapses the
     // menu back into the button - it has opened (or navigated to) its page,
@@ -2024,6 +2135,14 @@
     var img = document.getElementById('modalImg');
     var poseToggle = document.getElementById('modalPoseToggle');
     var poseBtns = [].slice.call(poseToggle.querySelectorAll('button'));
+    var meta = entityMeta(sci);
+    var poseLabels = meta && meta.poseLabels ? meta.poseLabels : ['perched', 'in flight'];
+    poseBtns.forEach(function (b, i) {
+      var label = poseLabels[i] || ('pose ' + (i + 1));
+      b.setAttribute('aria-label', label);
+      var tip = b.querySelector('.tip');
+      if (tip) tip.textContent = label;
+    });
 
     // Reset the toggle: assume nothing's available, set pose 1 (perched
     // cutout - every species has it) as the optimistic default. HEAD
@@ -2074,7 +2193,8 @@
       syncPill(poseToggle);
     });
     document.getElementById('modalSci').textContent = sci;
-    document.getElementById('modalGenus').textContent = (sci.split(' ')[0] || '-');
+    document.getElementById('modalClassLabel').textContent = meta ? 'line' : 'genus';
+    document.getElementById('modalGenus').textContent = meta && meta.classification ? meta.classification : (sci.split(' ')[0] || '-');
     document.getElementById('modalCommon').textContent = '-';
     document.getElementById('modalAllTime').textContent = '-';
     document.getElementById('modalWindow').textContent = '-';
@@ -2088,14 +2208,23 @@
       document.getElementById('modalWindowLbl').textContent = windowLabel(currentHours);
     }
     document.getElementById('modalFirstSeen').textContent = '-';
-    document.getElementById('modalRarity').textContent = '-';
+    document.getElementById('modalFirstSeenLbl').textContent = meta && meta.firstSeenLabel ? meta.firstSeenLabel : 'first heard';
+    document.getElementById('modalRarity').textContent = meta && meta.category ? meta.category : '-';
     document.getElementById('modalRarity').classList.remove('rare');
     document.getElementById('modalDesc').textContent = 'Loading description...';
     document.getElementById('modalDesc').classList.add('placeholder');
+    document.getElementById('modalRecordingsTitle').textContent = meta && meta.recordingsLabel ? meta.recordingsLabel : 'Recordings';
     document.getElementById('modalRecordings').innerHTML = '<li class="rec-empty">Loading recordings...</li>';
     document.getElementById('modalRecCount').textContent = '';
-    document.getElementById('modalWiki').href = wikiUrl(sci);
-    document.getElementById('modalEbird').href = ebirdUrl(sci);
+    var links = entityLinks(sci);
+    var modalLinkOne = document.getElementById('modalWiki');
+    var modalLinkTwo = document.getElementById('modalEbird');
+    modalLinkOne.href = links[0].url;
+    modalLinkOne.textContent = links[0].label;
+    modalLinkOne.setAttribute('aria-label', links[0].ariaLabel);
+    modalLinkTwo.href = links[1].url;
+    modalLinkTwo.textContent = links[1].label;
+    modalLinkTwo.setAttribute('aria-label', links[1].ariaLabel);
     // FLIP-style morph: scale + translate the modal-card from the
     // clicked atlas card's position to its natural centered size, so
     // the card *expands* into the detail view instead of just fading
@@ -2124,24 +2253,29 @@
       var winRow = ((DATA.recent && DATA.recent.species) || []).filter(function (x) { return x.sci === sci; })[0];
       document.getElementById('modalWindow').textContent = (winRow ? +winRow.n : 0).toLocaleString();
       document.getElementById('modalFirstSeen').textContent = s.first_seen ? fmtRecTime(s.first_seen.split(' ')[0], s.first_seen.split(' ')[1]) : '-';
-      var rar = rarityLabel(+s.total || 0, s.first_seen);
+      var rar = meta && meta.category ? meta.category : rarityLabel(+s.total || 0, s.first_seen);
       var rarEl = document.getElementById('modalRarity');
       rarEl.textContent = rar;
       if (rar === 'rare') rarEl.classList.add('rare');
       var dets = j.detections || [];
-      document.getElementById('modalRecCount').textContent = dets.length + ' captured';
+      document.getElementById('modalRecCount').textContent = meta && meta.capturedLabel
+        ? dets.length + ' ' + meta.capturedLabel
+        : dets.length + ' captured';
       document.getElementById('modalRecordings').innerHTML = dets.length
         ? dets.map(function (d) {
+          var hasAudio = +d.has_audio !== 0;
           return '<li class="rec-row" data-file="' + (d.file || '') + '" data-date="' + (d.d || '') + '">'
-            + '<button class="play" type="button" aria-label="play">' + ICON_PLAY + '</button>'
+            + (hasAudio
+              ? '<button class="play" type="button" aria-label="play">' + ICON_PLAY + '</button>'
+              : '<span class="rec-no-audio" aria-label="no audio available">&mdash;</span>')
             + '<span class="when">' + fmtRecTime(d.d, d.t) + '<small>' + fmtDateLine(d.d, d.t) + '</small></span>'
-            + '<span class="conf">' + ((+d.conf || 0) * 100).toFixed(0) + '%</span>'
-            + '<div class="rec-spectro" aria-hidden="true">'
+            + '<span class="conf">' + (hasAudio ? ((+d.conf || 0) * 100).toFixed(0) + '%' : 'transit') + '</span>'
+            + (hasAudio ? '<div class="rec-spectro" aria-hidden="true">'
             + '<div class="rec-spectro-loading">loading spectrogram...</div>'
             + '<div class="rec-spectro-played"></div>'
             + '<div class="rec-spectro-cursor"></div>'
             + '<div class="rec-spectro-scrub" role="slider" aria-label="scrub" tabindex="0"></div>'
-            + '</div>'
+            + '</div>' : '')
             + '</li>';
         }).join('')
         : '<li class="rec-empty">No recordings yet.</li>';
@@ -2149,8 +2283,11 @@
       document.getElementById('modalRecordings').innerHTML = '<li class="rec-empty">Failed to load recordings.</li>';
     });
 
-    // Wikipedia summary (description + genus / family).
-    var loadWiki = WIKI_CACHE[sci]
+    // Local descriptions take precedence for synthetic entities; birds keep
+    // using the Wikipedia summary endpoint.
+    var loadWiki = meta && meta.description
+      ? Promise.resolve({ extract: meta.description })
+      : WIKI_CACHE[sci]
       ? Promise.resolve(WIKI_CACHE[sci])
       : fetchJson('./avian/api/wiki.php?sci=' + encodeURIComponent(sci)).then(function (j) {
         WIKI_CACHE[sci] = j; return j;
@@ -2661,15 +2798,21 @@
 
   // Initial load: if URL has a sci hash, jump to atlas, highlight, and
   // open the modal.
-  if (readHash()) { go(2); highlightAtlas(readHash()); openDetailModal(readHash()); }
+  if (readHash()) {
+    go(2);
+    appReady.then(function () {
+      var sci = readHash();
+      if (sci) { highlightAtlas(sci); openDetailModal(sci); }
+    });
+  }
   // Admin overlay routing: #admin=system|logs|tools opens the admin
   // screen with that sub-tab. Clearing the hash closes it.
   function readAdminHash() {
     var m = location.hash.match(/^#admin=([a-z]+)/);
     return m ? m[1] : null;
   }
-  // #about - brief explainer popup; reached via /about (302 -> /#about)
-  // or the masthead eyebrow. aria-hidden drives the CSS fade/slide.
+  // #about - brief explainer popup; reached via /about (302 -> /#about).
+  // aria-hidden drives the CSS fade/slide.
   function openAbout() { document.getElementById('about-modal').setAttribute('aria-hidden', 'false'); }
   function closeAbout() { document.getElementById('about-modal').setAttribute('aria-hidden', 'true'); }
   function syncRouter() {
@@ -2701,7 +2844,7 @@
 
   // About popup: backdrop / close / explore button all carry data-close,
   // which clears the hash and routes through syncRouter -> closeAbout.
-  // The masthead eyebrow opens it; Escape dismisses it.
+  // Escape dismisses it.
   document.getElementById('about-modal').addEventListener('click', function (ev) {
     if (ev.target.dataset && ev.target.dataset.close === '1') {
       if (location.hash) { location.hash = ''; } else { closeAbout(); }
@@ -2713,10 +2856,6 @@
       if (location.hash) { location.hash = ''; } else { closeAbout(); }
     }
   });
-  document.getElementById('aboutLink').addEventListener('click', function () {
-    location.hash = '#about';
-  });
-
   // Shared decode context for spectrogram generation. Lives once for
   // the page; lazily created on first expand to avoid bootstrapping
   // WebAudio if no one ever opens a row.

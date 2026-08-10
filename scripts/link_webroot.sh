@@ -32,6 +32,8 @@ link_avian_visitors_webroot() {
     _avian_link_one "${run_user}" "${repo_dir}/avian/frontend/index.html" "${web_root}/index.html" || return 1
     _avian_link_one "${run_user}" "${repo_dir}/avian/frontend/styles.css" "${web_root}/styles.css" || return 1
     _avian_link_one "${run_user}" "${repo_dir}/avian/frontend/apt.js"     "${web_root}/apt.js" || return 1
+    _avian_link_one "${run_user}" "${repo_dir}/avian/frontend/ebird-codes.json" "${web_root}/ebird-codes.json" || return 1
+    _avian_link_one "${run_user}" "${repo_dir}/avian/frontend/custom-entities.json" "${web_root}/custom-entities.json" || return 1
     _avian_link_one "${run_user}" "${repo_dir}/avian/frontend/masks.json" "${web_root}/masks.json" || return 1
     _avian_link_one "${run_user}" "${repo_dir}/avian/frontend/dims.json"  "${web_root}/dims.json" || return 1
     _avian_link_one "${run_user}" "${repo_dir}/avian/frontend/nest.webp"  "${web_root}/nest.webp" || return 1

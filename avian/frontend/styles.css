@@ -10,6 +10,7 @@
     --accent-2: #1a1612;   /* near-black ink - same hue as the title text */
     --hairline: rgba(26,22,18,0.14);  /* faint divider lines + chart gridlines */
     --pill:     #fcfcfb;              /* active-toggle sliding pill */
+    --stats-bar: #e5e5dc;            /* flat warm grey from the timeline study */
     /* Depth shadow recipes - replace flat 1px borders */
     --edge:    inset 0 0 0 1px rgba(255,255,255,0.55), 0 0 0 1px rgba(26,22,18,0.04);
     --edge-lg: inset 0 0 0 1px rgba(255,255,255,0.6), 0 0 0 1px rgba(26,22,18,0.06), 0 8px 28px rgba(26,22,18,0.06);
@@ -35,6 +36,7 @@
     --accent-2: #ece8e1;
     --hairline: rgba(236,232,225,0.20);  /* faint light divider on charcoal */
     --pill:     #3a3e48;                 /* raised, clearly lighter than the track */
+    --stats-bar: #343840;
     --edge:    inset 0 0 0 1px rgba(255,255,255,0.05), 0 0 0 1px rgba(0,0,0,0.4);
     --edge-lg: inset 0 0 0 1px rgba(255,255,255,0.06), 0 0 0 1px rgba(0,0,0,0.5), 0 10px 30px rgba(0,0,0,0.5);
     --recess:  inset 0 1px 2px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.04);
@@ -49,44 +51,11 @@
   }
   .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.02em; }
 
-  /* ============ Stage / views ============
-     Stage is a flex column: a static title block sits on top, the views
-     slider fills the remaining height. The title NEVER moves when the
-     view changes - only its text fades when the new view's title differs
-     from the current one. */
+  /* ============ Stage / views ============ */
   .stage {
     position: fixed; inset: 0; overflow: hidden;
     display: flex; flex-direction: column;
   }
-  .static-head {
-    flex: 0 0 auto;
-    padding: 84px 32px 22px;
-    text-align: center; position: relative; z-index: 5;
-  }
-  .static-head .pre {
-    display: inline-block;
-    background: none; border: 0; padding: 0;
-    font: italic 400 clamp(13px, 1.4vw, 18px)/1 ui-serif, "Iowan Old Style", Georgia, serif;
-    color: var(--ink-2); letter-spacing: 0.06em; margin-bottom: 6px;
-    cursor: pointer; transition: color 140ms ease;
-  }
-  .static-head .pre:hover {
-    color: var(--ink);
-    text-decoration: underline; text-underline-offset: 3px;
-    text-decoration-thickness: 1px;
-  }
-  .static-head h1 {
-    margin: 0; padding: 0;
-    font: 700 clamp(24px, 3.2vw, 40px)/1 ui-serif, "Iowan Old Style", "Bookman Old Style", Georgia, serif;
-    letter-spacing: 0.06em; color: var(--ink); text-transform: uppercase;
-    font-style: normal;
-    transition: opacity 240ms cubic-bezier(.7,.05,.2,1);
-  }
-  .static-head.swap-out h1 { opacity: 0; }
-  @media (max-width: 700px) {
-    .static-head { padding: 96px 18px 22px; }
-  }
-
   .views {
     flex: 1 1 auto; min-height: 0;
     position: relative; display: flex;
@@ -100,6 +69,29 @@
   .view#v1 { display: flex; flex-direction: column; }
   @media (max-width: 700px) { .view { padding: 8px 18px 132px; } .view#v0, .view#v1 { padding: 8px 16px 88px; } }
 
+  /* Dedicated display surface at /collage: exactly the live collage,
+     edge-to-edge, with no dashboard controls or interactive overlays. */
+  html.collage-only .top,
+  html.collage-only #menu-dd,
+  html.collage-only .slider,
+  html.collage-only .return-to-atlas,
+  html.collage-only #detail-modal,
+  html.collage-only #about-modal,
+  html.collage-only .admin-screen { display: none !important; }
+  html.collage-only .views {
+    width: 100%; height: 100%; transform: none !important;
+  }
+  html.collage-only .view { display: none !important; }
+  html.collage-only .view#v0 {
+    display: flex !important;
+    flex: 0 0 100%; width: 100%; height: 100%;
+    padding: 0; overflow: hidden;
+  }
+  html.collage-only .gcollage {
+    width: 100%; height: 100%; max-width: none; margin: 0;
+    pointer-events: none;
+  }
+
   /* ============ Top bar - window picker (left) + menu button (right). ============
      Visible on every view; the picker is the universal time-window control. */
   .top {
@@ -108,8 +100,14 @@
     padding: 0 28px; z-index: 30; pointer-events: none;
   }
   .top > * { pointer-events: auto; }
+  .top-left-controls {
+    display: flex; align-items: center; gap: 7px;
+  }
+  .top-right-controls {
+    display: flex; align-items: center; gap: 7px;
+  }
   .top .window-pick {
-    display: inline-flex; gap: 0; padding: 4px;
+    display: inline-flex; gap: 0; padding: 4px; height: 36px;
     background: var(--paper-2); border-radius: 999px;
     box-shadow: var(--recess);
     position: relative;
@@ -117,7 +115,7 @@
   .top .window-pick button {
     background: transparent; border: 0; color: var(--ink-soft);
     font: 10px/1 ui-monospace, Menlo, monospace; letter-spacing: 0.18em;
-    padding: 9px 16px; border-radius: 999px; cursor: pointer; text-transform: uppercase;
+    height: 28px; padding: 0 16px; border-radius: 999px; cursor: pointer; text-transform: uppercase;
     transition: color 200ms ease;
     position: relative; z-index: 1;
   }
@@ -136,15 +134,19 @@
      spacious to thumb-tight without losing legibility. */
   @media (max-width: 700px) {
     .top { top: 12px; padding: 0 12px; }
-    .top .window-pick { padding: 3px; }
+    .top-left-controls { gap: 5px; }
+    .top-right-controls { gap: 5px; }
+    .top .window-pick { padding: 3px; height: 27px; }
     .top .window-pick button {
-      font-size: 8.5px; padding: 6px 10px; letter-spacing: 0.12em;
+      height: 21px; font-size: 8.5px; padding: 0 10px; letter-spacing: 0.12em;
     }
     .menu-btn { font-size: 9px; padding: 6px 11px 5px; letter-spacing: 0.14em; }
     .return-to-atlas { top: 10px; left: 10px; padding: 5px 10px; font-size: 8.5px; }
   }
   @media (max-width: 420px) {
-    .top .window-pick button { font-size: 8px; padding: 5px 7px; letter-spacing: 0.08em; }
+    .top .window-pick { height: 24px; }
+    .top .window-pick button { height: 18px; font-size: 8px; padding: 0 7px; letter-spacing: 0.08em; }
+    .top-left-controls { gap: 4px; }
   }
 
   /* ============ Bottom slider - recessed track, raised active pill ============ */
@@ -460,18 +462,23 @@
     display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
     margin: 4px 0 2px;
   }
-  .menu-links a {
+  .menu-links a,
+  .menu-links button {
     display: flex; align-items: center; justify-content: center;
     padding: 9px 10px;
     background: var(--paper-2);
     color: var(--ink); text-decoration: none;
+    border: 0;
     font: 10.5px ui-monospace, Menlo, monospace;
     letter-spacing: 0.10em; text-transform: lowercase;
     border-radius: 6px;
     box-shadow: var(--raised);
     transition: transform 160ms ease, color 160ms ease;
+    cursor: pointer;
   }
-  .menu-links a:hover { transform: translateY(-1px); color: var(--ink); background: var(--paper); }
+  .menu-links a:hover,
+  .menu-links button:hover { transform: translateY(-1px); color: var(--ink); background: var(--paper); }
+  .menu-links .train-menu-toggle { grid-column: 1 / -1; }
   .menu-save-row {
     display: flex; gap: 8px; align-items: center; justify-content: flex-end;
     margin-top: 10px; padding: 0 4px;
@@ -492,9 +499,7 @@
   .menu-save-row button:disabled { opacity: 0.4; cursor: default; }
 
   /* ============ View 1 - Collage (Galliformes-style poster) ============
-     Viewport-fit, no scroll. The shared static-head provides the title;
-     this view's content is just the cluster of bird cutouts which fills
-     the remaining viewport height. */
+     Viewport-fit, no scroll. */
   .gcollage {
     flex: 1 1 auto; width: 100%; max-width: 1300px; margin: 0 auto;
     position: relative; min-height: 0;
@@ -615,7 +620,6 @@
     .empty-nest.entering .empty { animation: none; }
   }
 
-  /* Page header is now shared at .stage > .static-head - see top of CSS. */
   /* Stats grid: charts stack on the LEFT, text sections on the RIGHT.
      Each chart is a full-bleed card; each text section is a list with
      subtle separators. Sized to fit the viewport without scrolling. */
@@ -651,10 +655,9 @@
   }
 
   /* Editorial detection timeline. One evenly-spaced column per species,
-     ordered by last-detection time (x = time). Black square fills its
-     column so neighbours touch at the gridline; its height up the column
-     encodes count. Small rotated label + per-column timestamp at the
-     bottom. Fits the viewport - never scrolls. */
+     ordered by last-detection time (x = time). A pale grey bar rises from
+     the baseline to encode count and carries the perched species cutout.
+     Small rotated label + per-column timestamp complete each column. */
   .stats-timeline {
     position: relative;
     flex: 1 1 auto; min-height: 0;
@@ -692,17 +695,19 @@
     pointer-events: none;
   }
   .stats-tl-square {
-    position: absolute; left: 50%;
+    position: absolute; left: 50%; bottom: 0;
     transform: translateX(-50%);
-    background: var(--ink);
-    /* Paper-coloured side borders. box-sizing: border-box keeps the box
-       column-filling, so the fill just insets 1px each side. Where two
-       squares touch, the abutting borders read as a crisp white line
-       directly between them; on the cluster's outer edges they vanish
-       into the matching paper background. */
-    border-left: 1px solid var(--paper);
-    border-right: 1px solid var(--paper);
-    transition: background 140ms ease, transform 140ms ease;
+    overflow: hidden;
+    background: var(--stats-bar);
+  }
+  .stats-tl-bird {
+    position: absolute; top: 2px; left: 50%;
+    transform: translateX(-50%);
+    display: block;
+    width: calc(100% - 4px); height: 46px;
+    max-height: calc(100% - 4px);
+    object-fit: contain; object-position: 50% 0;
+    transition: transform 150ms ease;
   }
   .stats-tl-col { cursor: pointer; }
   /* Cross-highlight: hovering a square or a table row lights up the
@@ -710,9 +715,9 @@
      label scales + shifts to the accent ink, so the whole column reads
      as selected. */
   .stats-tl-col.sync-hi .stats-tl-square {
-    background: var(--accent);
-    transform: translateX(-50%) scale(1.18);
+    background: var(--stats-bar);
   }
+  .stats-tl-col.sync-hi .stats-tl-bird { transform: translateX(-50%) scale(1.08); }
   .stats-tl-col.sync-hi .stats-tl-label {
     transform: rotate(-90deg) translateY(55%) scale(1.1);
   }
@@ -815,24 +820,20 @@
      Field-guide grid: one card per species, each card holds the cutout,
      names, window/all-time detection counts, and small action chips for
      audio playback, Wikipedia, and eBird. */
-  .atlas-controls {
-    /* The bar is transparent and floats (z-index) over the scrolling cards;
-       only the pill is opaque. Cards scroll behind it and clip at the top of
-       the view, under the title, as they did before it was pinned. */
-    position: sticky; top: 0; z-index: 2;
-    max-width: 1280px; margin: 0 auto 18px;
-    display: flex; justify-content: flex-end; align-items: center;
-    pointer-events: none;
-  }
+  /* Atlas sorting shares the fixed top rail with the time picker and Menu.
+     Keeping all three controls in one flex row prevents independent sticky
+     positioning from wrapping or covering the first card row. */
+  .atlas-controls { display: flex; align-items: center; }
+  .atlas-controls[hidden] { display: none; }
   .atlas-sort { pointer-events: auto; }
   .atlas-sort {
-    display: inline-flex; padding: 3px; position: relative;
+    display: inline-flex; padding: 4px; height: 36px; position: relative;
     background: var(--paper-2); border-radius: 999px;
     box-shadow: var(--recess);
   }
   .atlas-sort button {
     background: transparent; border: 0; color: var(--ink-soft);
-    width: 30px; height: 26px; padding: 0; border-radius: 999px;
+    width: 30px; height: 28px; padding: 0; border-radius: 999px;
     cursor: pointer; position: relative; z-index: 1;
     display: inline-flex; align-items: center; justify-content: center;
     transition: color 200ms ease;
@@ -850,17 +851,29 @@
     opacity: 0; pointer-events: none; transition: opacity 160ms ease;
   }
   .atlas-sort button:hover .tip { opacity: 1; }
+  @media (max-width: 700px) {
+    .atlas-sort { padding: 3px; height: 27px; }
+    .atlas-sort button { width: 25px; height: 21px; }
+    .atlas-sort button svg { width: 12px; height: 12px; }
+  }
+  @media (max-width: 420px) {
+    .atlas-sort { height: 24px; }
+    .atlas-sort button { width: 23px; height: 18px; }
+    .atlas-sort button svg { width: 11px; height: 11px; }
+  }
   .atlas-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 22px;
     max-width: 1280px; margin: 0 auto;
   }
+  .view#v2 { padding-top: 84px; }
   /* Mobile atlas: a compact 2-up grid instead of one giant card per row,
      so you can scan many birds and tap easily. Inline actions are hidden -
      tapping the card opens the detail modal, which has play/wiki/ebird +
      recordings - making the whole card one big touch target. */
   @media (max-width: 700px) {
+    .view#v2 { padding-top: 58px; }
     /* minmax(0,1fr) lets the columns shrink below their content's intrinsic
        width (otherwise the chips force overflow). Selectors are scoped under
        .atlas-grid so they out-specify the base .bird-card rules that appear
@@ -1037,7 +1050,6 @@
   }
   body.admin-on .return-to-atlas { display: inline-flex; }
   body.admin-on #slider { visibility: hidden; }
-  body.admin-on .static-head { opacity: 0; pointer-events: none; }
   /* Hide the time-window pill on admin pages (it doesn't apply
      there) - the return-to-atlas link takes its slot. */
   body.admin-on #winPick { visibility: hidden; }
@@ -1162,13 +1174,11 @@
     margin-bottom: 18px; box-shadow: 0 0 0 1px var(--accent), var(--edge);
   }
   /* When admin screen is shown, the slider underneath is hidden so it
-     doesn't compete for scrolling. The static title gets swapped out
-     too - admin is its own section with its own visual identity.
-     Menu button + time-window pill stay visible (still useful). */
+     doesn't compete for scrolling. Menu button + time-window pill stay
+     visible (still useful). */
   body.admin-on #views { display: none; }
   body.admin-on .nav-band,
   body.admin-on #slider { visibility: hidden; }
-  body.admin-on .static-head { opacity: 0; pointer-events: none; transition: opacity 200ms ease; }
 
   /* Mobile compact: drawer takes near-full width, admin pads tighter,
      section heads + cards downsize. */
@@ -1432,6 +1442,11 @@
     transition: background 160ms ease;
   }
   .rec-row:hover { background: var(--paper-2); }
+  .rec-no-audio {
+    display: grid; place-items: center;
+    color: var(--ink-soft);
+    font: 12px ui-monospace, Menlo, monospace;
+  }
   .rec-row.expanded { grid-template-columns: 30px 1fr auto; }
   /* Spectrogram strip - inline below the row header. Click on the row
      toggles open/closed independent of playback so you can scan

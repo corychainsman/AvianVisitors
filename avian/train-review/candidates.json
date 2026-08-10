@@ -1,0 +1,66 @@
+[
+  {
+    "id": "20260806-055311",
+    "recorded_at": "2026-08-06T05:53:11-04:00",
+    "passage_window": "05:52–05:57",
+    "context": "Two scheduled trains passed between Wellesley Square and Wellesley Hills close together.",
+    "audio": "/By_Date/2026-08-06/Fish_Crow/Fish_Crow-85-2026-08-06-birdnet-05:53:11.mp3",
+    "spectrogram": "/By_Date/2026-08-06/Fish_Crow/Fish_Crow-85-2026-08-06-birdnet-05:53:11.mp3.png"
+  },
+  {
+    "id": "20260806-065023",
+    "recorded_at": "2026-08-06T06:50:23-04:00",
+    "passage_window": "06:47–06:55",
+    "context": "Two scheduled trains passed in opposite directions within several minutes.",
+    "audio": "/By_Date/2026-08-06/House_Finch/House_Finch-73-2026-08-06-birdnet-06:50:23.mp3",
+    "spectrogram": "/By_Date/2026-08-06/House_Finch/House_Finch-73-2026-08-06-birdnet-06:50:23.mp3.png"
+  },
+  {
+    "id": "20260806-074059",
+    "recorded_at": "2026-08-06T07:40:59-04:00",
+    "passage_window": "07:38–07:42",
+    "context": "Inbound and outbound trains were both scheduled in this passage window.",
+    "audio": "/By_Date/2026-08-06/Downy_Woodpecker/Downy_Woodpecker-93-2026-08-06-birdnet-07:40:59.mp3",
+    "spectrogram": "/By_Date/2026-08-06/Downy_Woodpecker/Downy_Woodpecker-93-2026-08-06-birdnet-07:40:59.mp3.png"
+  },
+  {
+    "id": "20260806-083314",
+    "recorded_at": "2026-08-06T08:33:14-04:00",
+    "passage_window": "08:31–08:35",
+    "context": "Scheduled inbound passage between Wellesley Square and Wellesley Hills.",
+    "audio": "/By_Date/2026-08-06/American_Goldfinch/American_Goldfinch-74-2026-08-06-birdnet-08:33:14.mp3",
+    "spectrogram": "/By_Date/2026-08-06/American_Goldfinch/American_Goldfinch-74-2026-08-06-birdnet-08:33:14.mp3.png"
+  },
+  {
+    "id": "20260806-083608",
+    "recorded_at": "2026-08-06T08:36:08-04:00",
+    "passage_window": "08:35–08:39",
+    "context": "Scheduled outbound passage between Wellesley Hills and Wellesley Square.",
+    "audio": "/By_Date/2026-08-06/Northern_Cardinal/Northern_Cardinal-76-2026-08-06-birdnet-08:36:08.mp3",
+    "spectrogram": "/By_Date/2026-08-06/Northern_Cardinal/Northern_Cardinal-76-2026-08-06-birdnet-08:36:08.mp3.png"
+  },
+  {
+    "id": "20260806-102150",
+    "recorded_at": "2026-08-06T10:21:50-04:00",
+    "passage_window": "10:20–10:24",
+    "context": "Scheduled outbound passage between Wellesley Hills and Wellesley Square.",
+    "audio": "/By_Date/2026-08-06/American_Goldfinch/American_Goldfinch-88-2026-08-06-birdnet-10:21:50.mp3",
+    "spectrogram": "/By_Date/2026-08-06/American_Goldfinch/American_Goldfinch-88-2026-08-06-birdnet-10:21:50.mp3.png"
+  },
+  {
+    "id": "20260806-125934",
+    "recorded_at": "2026-08-06T12:59:34-04:00",
+    "passage_window": "12:57–13:01",
+    "context": "Recorded almost exactly halfway through the scheduled inbound passage.",
+    "audio": "/By_Date/2026-08-06/Red-breasted_Nuthatch/Red-breasted_Nuthatch-70-2026-08-06-birdnet-12:59:34.mp3",
+    "spectrogram": "/By_Date/2026-08-06/Red-breasted_Nuthatch/Red-breasted_Nuthatch-70-2026-08-06-birdnet-12:59:34.mp3.png"
+  },
+  {
+    "id": "20260806-142258",
+    "recorded_at": "2026-08-06T14:22:58-04:00",
+    "passage_window": "14:20–14:24",
+    "context": "Recorded near the middle of the scheduled outbound passage.",
+    "audio": "/By_Date/2026-08-06/House_Finch/House_Finch-93-2026-08-06-birdnet-14:22:58.mp3",
+    "spectrogram": "/By_Date/2026-08-06/House_Finch/House_Finch-93-2026-08-06-birdnet-14:22:58.mp3.png"
+  }
+]
