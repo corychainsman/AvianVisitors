@@ -69,6 +69,15 @@ fi
 source "$config"
 source "$repo/scripts/link_webroot.sh"
 link_avian_visitors_webroot "$repo" "$EXTRACTED" pi
+
+# Older train-detector builds ran as root and could create the day's output
+# directory before BirdNET did, preventing BirdNET from saving any birds for
+# that date.  Normalize directory ownership on every container start both to
+# repair such installations and to keep the shared tree writable by uid 1000.
+mkdir -p /config/BirdSongs/By_Date /config/BirdSongs/TrainDetector
+find /config/BirdSongs/By_Date -type d -exec chown pi:pi {} +
+chown -R pi:pi /config/BirdSongs/TrainDetector
+
 ln -sfn /config/frame/frame.jpg "$EXTRACTED/frame.jpg"
 ln -sfn /config/frame/frame.sha256 "$EXTRACTED/frame.sha256"
 ln -sfn /config/frame/frame-birds.jpg "$EXTRACTED/frame-birds.jpg"
