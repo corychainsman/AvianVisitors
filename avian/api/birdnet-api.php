@@ -56,18 +56,24 @@ function one(SQLite3 $db, string $sql, array $bind = []) {
 }
 
 $action = $_GET['action'] ?? 'stats';
+$trains = strtolower((string)($_GET['trains'] ?? '1'));
+$excludeTrains = in_array($trains, ['0', 'false', 'off', 'no'], true);
+// Synthetic train entities share this scientific-name prefix. Keep trains in
+// API responses by default for backwards compatibility; the web UI opts out
+// when its shared "hide trains" preference is active.
+$entityFilter = $excludeTrains ? "Sci_Name NOT LIKE 'Machina ferriviaria%'" : '1=1';
 
 switch ($action) {
 
     case 'stats': {
-        $total       = (int)(one($db, 'SELECT COUNT(*) AS n FROM detections')['n'] ?? 0);
-        $species     = (int)(one($db, 'SELECT COUNT(DISTINCT Sci_Name) AS n FROM detections')['n'] ?? 0);
-        $today       = (int)(one($db, "SELECT COUNT(*) AS n FROM detections WHERE Date = DATE('now','localtime')")['n'] ?? 0);
-        $todaySpec   = (int)(one($db, "SELECT COUNT(DISTINCT Sci_Name) AS n FROM detections WHERE Date = DATE('now','localtime')")['n'] ?? 0);
-        $lastHour    = (int)(one($db, "SELECT COUNT(*) AS n FROM detections WHERE Date = DATE('now','localtime') AND Time >= TIME('now','localtime','-1 hour')")['n'] ?? 0);
-        $week        = (int)(one($db, "SELECT COUNT(*) AS n FROM detections WHERE Date >= DATE('now','localtime','-7 day')")['n'] ?? 0);
-        $weekSpec    = (int)(one($db, "SELECT COUNT(DISTINCT Sci_Name) AS n FROM detections WHERE Date >= DATE('now','localtime','-7 day')")['n'] ?? 0);
-        $first       = one($db, 'SELECT MIN(Date) AS d FROM detections');
+        $total       = (int)(one($db, "SELECT COUNT(*) AS n FROM detections WHERE $entityFilter")['n'] ?? 0);
+        $species     = (int)(one($db, "SELECT COUNT(DISTINCT Sci_Name) AS n FROM detections WHERE $entityFilter")['n'] ?? 0);
+        $today       = (int)(one($db, "SELECT COUNT(*) AS n FROM detections WHERE $entityFilter AND Date = DATE('now','localtime')")['n'] ?? 0);
+        $todaySpec   = (int)(one($db, "SELECT COUNT(DISTINCT Sci_Name) AS n FROM detections WHERE $entityFilter AND Date = DATE('now','localtime')")['n'] ?? 0);
+        $lastHour    = (int)(one($db, "SELECT COUNT(*) AS n FROM detections WHERE $entityFilter AND Date = DATE('now','localtime') AND Time >= TIME('now','localtime','-1 hour')")['n'] ?? 0);
+        $week        = (int)(one($db, "SELECT COUNT(*) AS n FROM detections WHERE $entityFilter AND Date >= DATE('now','localtime','-7 day')")['n'] ?? 0);
+        $weekSpec    = (int)(one($db, "SELECT COUNT(DISTINCT Sci_Name) AS n FROM detections WHERE $entityFilter AND Date >= DATE('now','localtime','-7 day')")['n'] ?? 0);
+        $first       = one($db, "SELECT MIN(Date) AS d FROM detections WHERE $entityFilter");
         echo json_encode([
             'totals'    => ['detections' => $total, 'species' => $species],
             'today'     => ['detections' => $today, 'species' => $todaySpec],
@@ -85,7 +91,7 @@ switch ($action) {
         $rs = rows($db,
           "SELECT Sci_Name AS sci, Com_Name AS com, MIN(Date||' '||Time) AS first_seen, "
         . "       MAX(Date||' '||Time) AS last_seen, COUNT(*) AS n, MAX(Confidence) AS best_conf "
-        . "FROM detections GROUP BY Sci_Name ORDER BY first_seen ASC"
+        . "FROM detections WHERE $entityFilter GROUP BY Sci_Name ORDER BY first_seen ASC"
         );
         echo json_encode(['species' => $rs, 'as_of' => date('c')]);
         break;
@@ -102,7 +108,8 @@ switch ($action) {
           "SELECT Sci_Name AS sci, Com_Name AS com, COUNT(*) AS n, MAX(Confidence) AS best_conf, "
         . "       MAX(Date||' '||Time) AS last_seen "
         . "FROM detections "
-        . "WHERE (julianday('now','localtime') - julianday(Date||' '||Time)) * 24 <= :hrs "
+        . "WHERE $entityFilter "
+        . "AND (julianday('now','localtime') - julianday(Date||' '||Time)) * 24 <= :hrs "
         . "GROUP BY Sci_Name ORDER BY last_seen DESC",
           [':hrs' => $hours]
         );
@@ -153,13 +160,15 @@ switch ($action) {
         $daily = rows($db,
           "SELECT Date AS date, COUNT(*) AS detections, COUNT(DISTINCT Sci_Name) AS species "
         . "FROM detections "
-        . "WHERE Date >= DATE('now','localtime','-".($days - 1)." day') "
+        . "WHERE $entityFilter "
+        . "AND Date >= DATE('now','localtime','-".($days - 1)." day') "
         . "GROUP BY Date ORDER BY Date"
         );
         $by_hour = rows($db,
           "SELECT CAST(strftime('%H', Time) AS INT) AS hour, COUNT(*) AS detections "
         . "FROM detections "
-        . "WHERE Date >= DATE('now','localtime','-30 day') "
+        . "WHERE $entityFilter "
+        . "AND Date >= DATE('now','localtime','-30 day') "
         . "GROUP BY hour ORDER BY hour"
         );
         echo json_encode([
@@ -179,7 +188,7 @@ switch ($action) {
         $rs = rows($db,
           "SELECT Sci_Name AS sci, Com_Name AS com, MIN(Date||' '||Time) AS first_seen, "
         . "       COUNT(*) AS total "
-        . "FROM detections GROUP BY Sci_Name ORDER BY first_seen DESC LIMIT :lim",
+        . "FROM detections WHERE $entityFilter GROUP BY Sci_Name ORDER BY first_seen DESC LIMIT :lim",
           [':lim' => $limit]
         );
         echo json_encode(['species' => $rs, 'as_of' => date('c')]);

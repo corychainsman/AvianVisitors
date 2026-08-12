@@ -189,6 +189,7 @@
     trainToggle.setAttribute('aria-pressed', includeTrains ? 'true' : 'false');
     trainToggle.textContent = includeTrains ? 'hide trains' : 'show trains';
   }
+  function trainApiParam() { return includeTrains ? '1' : '0'; }
   function wireTrainToggle() {
     if (!trainToggle || trainToggle.__trainToggleWired) return;
     trainToggle.__trainToggleWired = true;
@@ -197,7 +198,10 @@
       includeTrains = !includeTrains;
       writeLS('bird:includeTrains', includeTrains ? '1' : '0');
       syncTrainToggle();
-      renderCollageFromData(true);
+      // Apply the preference immediately to every view, then replace the
+      // aggregate Stats data with authoritative train-filtered API results.
+      renderWindowDependent(true);
+      refreshAll(true);
       closeDd();
     });
   }
@@ -1006,6 +1010,7 @@
     var tl = document.getElementById('statsTimeline');
     if (!tl) return;
     var all = ((DATA.recent && DATA.recent.species) || []).slice();
+    if (!includeTrains) all = all.filter(function (s) { return !isTrainSpecies(s); });
     if (!all.length) {
       tl.innerHTML = '<div class="stats-tl-empty">no detections in this window</div>';
       return;
@@ -1158,6 +1163,7 @@
     // Top Species - top 5 species in the current window. ./avian/api/birdnet-api.php?action=recent
     // already returns species sorted by last_seen DESC; re-sort by count.
     var ranked = (recent.species || [])
+      .filter(function (s) { return includeTrains || !isTrainSpecies(s); })
       .slice()
       .sort(function (a, b) { return (+b.n) - (+a.n); })
       .slice(0, 5);
@@ -1169,7 +1175,9 @@
 
     // First Detections - newest additions to the life list, with a
     // "Xd ago" label computed from first_seen.
-    var fs = (firstseen.species || []).slice(0, 5);
+    var fs = (firstseen.species || [])
+      .filter(function (s) { return includeTrains || !isTrainSpecies(s); })
+      .slice(0, 5);
     var now = Date.now();
     document.getElementById('statsFirstSeen').innerHTML = fs.length
       ? fs.map(function (s) {
@@ -1249,6 +1257,10 @@
 
     var lifelist = (DATA.lifelist && DATA.lifelist.species) || [];
     var recent = (DATA.recent && DATA.recent.species) || [];
+    if (!includeTrains) {
+      lifelist = lifelist.filter(function (s) { return !isTrainSpecies(s); });
+      recent = recent.filter(function (s) { return !isTrainSpecies(s); });
+    }
     // Window count lookup: sci -> count in current window.
     var winBySci = {};
     recent.forEach(function (s) { winBySci[s.sci] = +s.n; });
@@ -1496,22 +1508,26 @@
     // lands later - we discard the stale response so the collage
     // never reverts to a different window.
     var forHours = currentHours;
-    return fetchJson('./avian/api/birdnet-api.php?action=recent&hours=' + forHours)
+    var forTrains = includeTrains;
+    return fetchJson('./avian/api/birdnet-api.php?action=recent&hours=' + forHours + '&trains=' + trainApiParam())
       .then(function (j) {
-        if (forHours !== currentHours) return; // window changed mid-flight
+        if (forHours !== currentHours || forTrains !== includeTrains) return;
         DATA.recent = j; renderWindowDependent(animate);
       })
       .catch(function (e) { console.warn('recent fetch failed', e); });
   }
   function refreshAll(animate) {
     var forHours = currentHours;
+    var forTrains = includeTrains;
+    var trainQuery = '&trains=' + trainApiParam();
     return Promise.all([
-      fetchJson('./avian/api/birdnet-api.php?action=stats').catch(function () { return null; }),
-      fetchJson('./avian/api/birdnet-api.php?action=lifelist').catch(function () { return null; }),
-      fetchJson('./avian/api/birdnet-api.php?action=timeseries&days=30').catch(function () { return null; }),
-      fetchJson('./avian/api/birdnet-api.php?action=firstseen&limit=10').catch(function () { return null; }),
-      fetchJson('./avian/api/birdnet-api.php?action=recent&hours=' + forHours).catch(function () { return null; }),
+      fetchJson('./avian/api/birdnet-api.php?action=stats' + trainQuery).catch(function () { return null; }),
+      fetchJson('./avian/api/birdnet-api.php?action=lifelist' + trainQuery).catch(function () { return null; }),
+      fetchJson('./avian/api/birdnet-api.php?action=timeseries&days=30' + trainQuery).catch(function () { return null; }),
+      fetchJson('./avian/api/birdnet-api.php?action=firstseen&limit=10' + trainQuery).catch(function () { return null; }),
+      fetchJson('./avian/api/birdnet-api.php?action=recent&hours=' + forHours + trainQuery).catch(function () { return null; }),
     ]).then(function (parts) {
+      if (forTrains !== includeTrains) return;
       DATA.stats = parts[0];
       DATA.lifelist = parts[1];
       DATA.timeseries = parts[2];
