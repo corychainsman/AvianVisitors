@@ -30,6 +30,13 @@ Preferences cachePreferences;
 bool preferencesReady = false;
 bool mounted = false;
 bool mountAttempted = false;
+const char *diagnostic = "not checked";
+const char *mountError = "filesystem unavailable";
+bool fail(const char *reason) {
+  diagnostic = reason;
+  Serial.printf("Wake menu: %s\n", reason);
+  return false;
+}
 
 bool openPreferences() {
   if (!preferencesReady) preferencesReady = cachePreferences.begin("avianMenu", false);
@@ -37,7 +44,7 @@ bool openPreferences() {
 }
 
 bool mountCache() {
-  if (mountAttempted) return mounted;
+  if (mountAttempted) return mounted || fail(mountError);
   mountAttempted = true;
   mounted = SPIFFS.begin(false);
   if (mounted) return true;
@@ -45,18 +52,24 @@ bool mountCache() {
   // may initialize only a completely erased SPIFFS data partition.
   const esp_partition_t *partition = esp_partition_find_first(
       ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
-  if (!partition) return false;
+  if (!partition) { mountError = "SPIFFS partition missing"; return fail(mountError); }
   uint8_t block[1024];
   for (size_t offset = 0; offset < partition->size; offset += sizeof(block)) {
     const size_t length = min<size_t>(sizeof(block), partition->size - offset);
-    if (esp_partition_read(partition, offset, block, length) != ESP_OK) return false;
+    if (esp_partition_read(partition, offset, block, length) != ESP_OK) {
+      mountError = "flash read failed"; return fail(mountError);
+    }
     for (size_t i = 0; i < length; ++i) {
-      if (block[i] != 0xff) return false;
+      if (block[i] != 0xff) {
+        mountError = "SPIFFS mount failed; nonblank partition preserved";
+        return fail(mountError);
+      }
     }
     delay(1);
   }
   mounted = SPIFFS.begin(true);
-  return mounted;
+  if (!mounted) { mountError = "SPIFFS initialization failed"; return fail(mountError); }
+  return true;
 }
 
 uint32_t checksum(const uint8_t *data) {
@@ -68,20 +81,28 @@ uint32_t checksum(const uint8_t *data) {
 bool allocateBackground() {
   if (!background) background = static_cast<uint8_t *>(ps_malloc(kBytes));
   if (!background) background = static_cast<uint8_t *>(malloc(kBytes));
-  return background != nullptr;
+  return background != nullptr || fail("background allocation failed");
 }
 
 bool loadBackground(const String &signature) {
-  if (!openPreferences() || !cachePreferences.getBool("valid", false)) return false;
-  if (signature.isEmpty() || signature.length() >= sizeof(CacheHeader::signature) ||
-      !mountCache() || !allocateBackground()) return false;
+  if (!openPreferences()) return fail("cache preferences unavailable");
+  if (!cachePreferences.getBool("valid", false)) return fail("background not saved");
+  if (signature.isEmpty() || signature.length() >= sizeof(CacheHeader::signature))
+    return fail("frame signature missing or invalid");
+  if (!mountCache() || !allocateBackground()) return false;
   File file = SPIFFS.open(kCachePath, FILE_READ);
   CacheHeader header{};
-  if (!file || file.size() != sizeof(header) + kBytes ||
-      file.read(reinterpret_cast<uint8_t *>(&header), sizeof(header)) != sizeof(header) ||
-      header.magic != kMagic || header.signature[sizeof(header.signature) - 1] != '\0' ||
-      signature != header.signature || file.read(background, kBytes) != kBytes) return false;
-  return header.checksum == checksum(background);
+  if (!file) return fail("background file missing");
+  if (file.size() != sizeof(header) + kBytes) return fail("background size mismatch");
+  if (file.read(reinterpret_cast<uint8_t *>(&header), sizeof(header)) != sizeof(header))
+    return fail("background header read failed");
+  if (header.magic != kMagic) return fail("background format outdated");
+  if (header.signature[sizeof(header.signature) - 1] != '\0' || signature != header.signature)
+    return fail("background frame mismatch");
+  if (file.read(background, kBytes) != kBytes) return fail("background read failed");
+  if (header.checksum != checksum(background)) return fail("background checksum mismatch");
+  diagnostic = "background ready";
+  return true;
 }
 
 void copyRegion(Inkplate &display, bool restore) {
@@ -112,6 +133,8 @@ void line(Inkplate &display, int y, String text) {
 }
 }  // namespace
 
+const char *wakeMenuDiagnostic() { return diagnostic; }
+
 void wakeMenuBegin(Inkplate &display) {
   display.begin();
   display.setRotation(0);
@@ -140,8 +163,13 @@ bool wakeMenuCaptureBackground(Inkplate &display, const String &frameSignature) 
   bool saved = file && file.write(reinterpret_cast<const uint8_t *>(&header), sizeof(header)) == sizeof(header)
       && file.write(background, kBytes) == kBytes;
   file.close();
-  if (!saved) SPIFFS.remove(kCachePath);
-  return saved && openPreferences() && cachePreferences.putBool("valid", true) == 1;
+  if (!saved) {
+    SPIFFS.remove(kCachePath);
+    return fail("background write failed");
+  }
+  if (!openPreferences() || cachePreferences.putBool("valid", true) != 1)
+    return fail("cache validity write failed");
+  return loadBackground(frameSignature);
 }
 
 bool wakeMenuShow(Inkplate &display, const String &frameSignature,

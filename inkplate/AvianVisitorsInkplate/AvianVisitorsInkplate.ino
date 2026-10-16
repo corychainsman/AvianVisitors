@@ -431,7 +431,8 @@ bool refreshFrame(const String &base, const String &imagePath,
   display.display();
   preferences.putString("frameHash", displaySignature);
   preferences.putULong64("lastDisplay", static_cast<uint64_t>(time(nullptr)));
-  wakeMenuCaptureBackground(display, displaySignature);
+  const bool menuReady = wakeMenuCaptureBackground(display, displaySignature);
+  otaReportStatus(base, menuReady ? "menu-ready" : "menu-unavailable", wakeMenuDiagnostic());
   pollsSinceRefresh = 0;
   Serial.println("E-paper refresh complete");
   return true;
@@ -547,6 +548,7 @@ void setup() {
   } else {
     ++pollsSinceRefresh;
     Serial.println("Frame unchanged; skipping the e-paper refresh");
+    otaReportStatus(base, "menu-ready", wakeMenuDiagnostic());
   }
 
   const time_t finished = time(nullptr);

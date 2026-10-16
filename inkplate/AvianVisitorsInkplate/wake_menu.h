@@ -10,6 +10,7 @@ struct WakeMenuStatus {
   String serverVersion;
 };
 
+const char *wakeMenuDiagnostic();
 void wakeMenuBegin(Inkplate &display);
 bool wakeMenuHasBackground(const String &frameSignature);
 // Invalidate before any full-panel update, capture after it completes.
