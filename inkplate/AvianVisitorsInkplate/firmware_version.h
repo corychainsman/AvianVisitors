@@ -1,5 +1,5 @@
 #pragma once
 
 // Monotonically increasing. The OTA client refuses older or equal builds.
-#define AVIAN_FIRMWARE_BUILD 2026080803UL
-#define AVIAN_FIRMWARE_VERSION "1.2.0-train-toggle"
+#define AVIAN_FIRMWARE_BUILD 2026101601UL
+#define AVIAN_FIRMWARE_VERSION "1.3.0-wake-menu"

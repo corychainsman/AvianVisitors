@@ -20,9 +20,13 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <time.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 
 #include "firmware_version.h"
 #include "ota_update.h"
+#include "wake_menu.h"
 
 #ifndef AVIAN_WIFI_SSID
 #define AVIAN_WIFI_SSID ""
@@ -53,7 +57,7 @@ Inkplate display;
 Preferences preferences;
 RTC_DATA_ATTR uint16_t pollsSinceRefresh = kDailyHealPolls;
 
-enum class WakeGesture { kNone, kToggleTrains, kForceOta };
+enum class WakeGesture { kNone, kRefresh, kToggleTrains, kForceOta };
 
 String backendUrl() {
   String value = preferences.getString("backend", kDefaultBackend);
@@ -62,6 +66,10 @@ String backendUrl() {
 }
 
 void sleepFor(uint64_t microseconds) {
+  const time_t started = time(nullptr);
+  const uint64_t targetWake = started >= kValidClockThreshold
+      ? static_cast<uint64_t>(started) + (microseconds + kMicrosecondsPerSecond - 1) / kMicrosecondsPerSecond
+      : 0;
   WiFi.disconnect(false, false);
   WiFi.mode(WIFI_OFF);
   Serial.flush();
@@ -72,71 +80,149 @@ void sleepFor(uint64_t microseconds) {
          static_cast<int32_t>(releaseDeadline - millis()) > 0) {
     delay(20);
   }
-  esp_sleep_enable_ext0_wakeup(kWakeButtonPin, LOW);
+  // A stuck/held button must not cause an endless wake/reset loop.
+  if (digitalRead(kWakeButtonPin) == HIGH) {
+    esp_sleep_enable_ext0_wakeup(kWakeButtonPin, LOW);
+  } else {
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT0);
+  }
+  if (targetWake != 0) {
+    const uint64_t current = static_cast<uint64_t>(time(nullptr));
+    microseconds = (targetWake > current ? targetWake - current : 1) * kMicrosecondsPerSecond;
+    preferences.putULong64("nextWake", targetWake > current ? targetWake : current + 1);
+  }
   esp_sleep_enable_timer_wakeup(microseconds);
   esp_deep_sleep_start();
 }
 
+struct ButtonEvent { int state; uint32_t at; };
+QueueHandle_t buttonEvents = nullptr;
+TaskHandle_t buttonSampler = nullptr;
+uint32_t lastButtonEventMs = 0;
+
+void sampleButton(void *) {
+  int stable = LOW;  // EXT0 already recorded press one.
+  int candidate = digitalRead(kWakeButtonPin);
+  uint32_t changed = millis();
+  for (;;) {
+    const int state = digitalRead(kWakeButtonPin);
+    if (state != candidate) {
+      candidate = state;
+      changed = millis();
+    }
+    if (candidate != stable && millis() - changed >= kDebounceMs) {
+      stable = candidate;
+      ButtonEvent event{stable, changed + kDebounceMs};
+      xQueueSend(buttonEvents, &event, 0);
+    }
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+}
+
+void startButtonSampling() {
+  buttonEvents = xQueueCreate(32, sizeof(ButtonEvent));
+  if (buttonEvents && xTaskCreate(sampleButton, "wake-button", 2048, nullptr, 1,
+                                  &buttonSampler) != pdPASS) {
+    vQueueDelete(buttonEvents);
+    buttonEvents = nullptr;
+  }
+}
+
+void stopButtonSampling() {
+  if (buttonSampler) vTaskDelete(buttonSampler);
+  buttonSampler = nullptr;
+  if (buttonEvents) vQueueDelete(buttonEvents);
+  buttonEvents = nullptr;
+}
+
 bool waitForButtonState(int state, uint32_t deadline) {
+  if (buttonEvents) {
+    for (;;) {
+      ButtonEvent event;
+      if (xQueuePeek(buttonEvents, &event, 0) == pdTRUE) {
+        if (static_cast<int32_t>(deadline - event.at) < 0) return false;
+        xQueueReceive(buttonEvents, &event, 0);
+        if (event.state == state) {
+          lastButtonEventMs = event.at;
+          return true;
+        }
+      } else {
+        if (static_cast<int32_t>(deadline - millis()) <= 0) return false;
+        delay(5);
+      }
+    }
+  }
+  // Low-memory fallback still offers normal post-render button interaction.
   while (static_cast<int32_t>(deadline - millis()) > 0) {
     if (digitalRead(kWakeButtonPin) == state) {
       delay(kDebounceMs);
-      if (digitalRead(kWakeButtonPin) == state) return true;
+      if (digitalRead(kWakeButtonPin) == state) {
+        lastButtonEventMs = millis();
+        return true;
+      }
     }
     delay(5);
   }
   return false;
 }
 
-WakeGesture detectWakeGesture() {
-  if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_EXT0) {
-    return WakeGesture::kNone;
-  }
+uint32_t interpressDeadline(uint32_t deadline) {
+  const uint32_t next = lastButtonEventMs + kInterpressTimeoutMs;
+  return static_cast<int32_t>(deadline - next) < 0 ? deadline : next;
+}
 
-  // The low level that caused EXT0 wake is press one. A pause after the third
-  // release selects the train toggle; continuing to five presses, with the
-  // fifth held for three seconds, selects forced OTA instead.
-  const uint32_t deadline = millis() + kGestureWindowMs;
+WakeGesture detectWakeGesture(uint32_t deadline) {
+  // EXT0 is press one. Allow the full menu interval for press two, then
+  // preserve the existing triple press and five-press/hold shortcuts.
   if (!waitForButtonState(HIGH, deadline)) return WakeGesture::kNone;
-  for (uint8_t press = 2; press <= 5; ++press) {
-    uint32_t pressDeadline = deadline;
-    if (press == 2 || press == 4) {
-      pressDeadline = min<uint32_t>(deadline, millis() + kInterpressTimeoutMs);
-    } else if (press == 3) {
-      pressDeadline = min<uint32_t>(deadline, millis() + kInterpressTimeoutMs);
-    }
-    if (!waitForButtonState(LOW, pressDeadline)) {
-      return WakeGesture::kNone;
-    }
-    if (press == 5) {
-      const uint32_t holdStarted = millis();
-      while (digitalRead(kWakeButtonPin) == LOW) {
-        if (millis() - holdStarted >= kForceHoldMs) {
-          Serial.println("Force-update button gesture recognized");
-          return WakeGesture::kForceOta;
-        }
-        if (static_cast<int32_t>(deadline - millis()) <= 0) {
-          return WakeGesture::kNone;
-        }
-        delay(10);
-      }
-      return WakeGesture::kNone;
-    }
-    if (!waitForButtonState(HIGH, deadline)) return WakeGesture::kNone;
-    if (press == 3) {
-      const uint32_t fourthPressDeadline =
-          min<uint32_t>(deadline, millis() + kInterpressTimeoutMs);
-      if (!waitForButtonState(LOW, fourthPressDeadline)) {
-        Serial.println("Train-toggle button gesture recognized");
-        return WakeGesture::kToggleTrains;
-      }
-      // Press four was consumed while resolving the ambiguous triple/five
-      // prefix. Finish its release here and continue directly to press five.
-      if (!waitForButtonState(HIGH, deadline)) return WakeGesture::kNone;
-      press = 4;
-    }
+  if (!waitForButtonState(LOW, deadline)) return WakeGesture::kNone;
+  if (!waitForButtonState(HIGH, deadline)) return WakeGesture::kRefresh;
+  if (!waitForButtonState(LOW, interpressDeadline(deadline))) {
+    return WakeGesture::kRefresh;
   }
-  return WakeGesture::kNone;
+  if (!waitForButtonState(HIGH, deadline)) return WakeGesture::kRefresh;
+  if (!waitForButtonState(LOW, interpressDeadline(deadline))) {
+    Serial.println("Train-toggle button gesture recognized");
+    return WakeGesture::kToggleTrains;
+  }
+  if (!waitForButtonState(HIGH, deadline)) return WakeGesture::kRefresh;
+  if (!waitForButtonState(LOW, interpressDeadline(deadline))) {
+    return WakeGesture::kRefresh;
+  }
+  const uint32_t holdDeadline = lastButtonEventMs + kForceHoldMs;
+  const uint32_t boundedHold = static_cast<int32_t>(deadline - holdDeadline) < 0
+                                   ? deadline : holdDeadline;
+  if (!waitForButtonState(HIGH, boundedHold) && boundedHold == holdDeadline) {
+    Serial.println("Force-update button gesture recognized");
+    return WakeGesture::kForceOta;
+  }
+  return WakeGesture::kRefresh;
+}
+
+String menuTime(uint64_t epoch) {
+  if (epoch < static_cast<uint64_t>(kValidClockThreshold)) return "Unknown";
+  const time_t value = static_cast<time_t>(epoch);
+  struct tm local;
+  localtime_r(&value, &local);
+  char text[32];
+  strftime(text, sizeof(text), "%b %d %I:%M %p", &local);
+  return String(text);
+}
+
+WakeMenuStatus menuStatus() {
+  WakeMenuStatus status;
+  status.wifiName = preferences.getString("lastSsid", "Unknown network");
+  if (!preferences.isKey("wifiOk")) {
+    status.wifiStatus = "Radio asleep; no connection history";
+  } else if (preferences.getBool("wifiOk", false)) {
+    status.wifiStatus = "Asleep; last OK " + preferences.getString("lastIp", "") +
+                        " / " + String(preferences.getInt("lastRssi", 0)) + " dBm";
+  } else {
+    status.wifiStatus = "Asleep; last connection failed";
+  }
+  status.lastUpdate = menuTime(preferences.getULong64("lastDisplay", 0));
+  status.nextUpdate = menuTime(preferences.getULong64("nextWake", 0));
+  return status;
 }
 
 void configureWellesleyTimezone() {
@@ -211,7 +297,15 @@ bool connectWifi() {
     WiFi.begin();
   }
 
-  if (!waitForWifi(30000)) return false;
+  const bool connected = waitForWifi(30000);
+  preferences.putBool("wifiOk", connected);
+  const String attemptedSsid = WiFi.SSID();
+  if (!attemptedSsid.isEmpty()) preferences.putString("lastSsid", attemptedSsid);
+  else if (!savedSsid.isEmpty()) preferences.putString("lastSsid", savedSsid);
+  else if (strlen(AVIAN_WIFI_SSID) > 0) preferences.putString("lastSsid", AVIAN_WIFI_SSID);
+  if (!connected) return false;
+  preferences.putString("lastIp", WiFi.localIP().toString());
+  preferences.putInt("lastRssi", WiFi.RSSI());
   Serial.print("Wi-Fi connected; address: ");
   Serial.println(WiFi.localIP());
   return true;
@@ -234,7 +328,11 @@ String fetchText(const String &url) {
 }
 
 void showProvisioningScreen() {
-  display.begin();
+  if (!wakeMenuInvalidate()) {
+    Serial.println("Cannot invalidate menu cache; preserving panel while setup portal runs");
+    return;
+  }
+  wakeMenuBegin(display);
   // The panel's native portrait space is 1200x1600 (rotation 0). The driver
   // defaults to landscape rotation 1, which would clip a portrait frame.
   display.setRotation(0);
@@ -316,7 +414,7 @@ String setupPage(const String &message = "") {
 bool refreshFrame(const String &base, const String &imagePath,
                   const String &displaySignature) {
   const String imageUrl = base + imagePath;
-  display.begin();
+  wakeMenuBegin(display);
   display.setRotation(0);
   display.clearDisplay();
   Serial.print("Downloading frame: ");
@@ -325,8 +423,14 @@ bool refreshFrame(const String &base, const String &imagePath,
     Serial.println("Frame download/decode failed; preserving the previous e-paper image");
     return false;
   }
+  if (!wakeMenuInvalidate()) {
+    Serial.println("Cannot invalidate menu cache; preserving the previous e-paper image");
+    return false;
+  }
   display.display();
   preferences.putString("frameHash", displaySignature);
+  preferences.putULong64("lastDisplay", static_cast<uint64_t>(time(nullptr)));
+  wakeMenuCaptureBackground(display, displaySignature);
   pollsSinceRefresh = 0;
   Serial.println("E-paper refresh complete");
   return true;
@@ -335,12 +439,31 @@ bool refreshFrame(const String &base, const String &imagePath,
 
 void setup() {
   Serial.begin(115200);
-  delay(500);
+  const bool buttonWake = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0;
+  if (!buttonWake) delay(500);
   pinMode(kWakeButtonPin, INPUT_PULLUP);
   configureWellesleyTimezone();
   preferences.begin("avian", false);
 
-  const WakeGesture gesture = detectWakeGesture();
+  WakeGesture gesture = WakeGesture::kNone;
+  if (buttonWake) {
+    const uint64_t scheduledWake = preferences.getULong64("nextWake", 0);
+    startButtonSampling();
+    const bool menuShown = wakeMenuShow(display, preferences.getString("frameHash", ""), menuStatus());
+    gesture = detectWakeGesture(millis() + kGestureWindowMs);
+    stopButtonSampling();
+    if (menuShown) wakeMenuHide(display);
+    if (gesture == WakeGesture::kNone) {
+      const time_t current = time(nullptr);
+      if (scheduledWake >= static_cast<uint64_t>(kValidClockThreshold) && clockIsValid()) {
+        const uint64_t remaining = scheduledWake > static_cast<uint64_t>(current)
+                                       ? scheduledWake - static_cast<uint64_t>(current) : 1;
+        sleepFor(remaining * kMicrosecondsPerSecond);
+      }
+      sleepFor(clockIsValid() && !isActiveTime(current) ? sleepUntilActive(current) : kNormalSleepUs);
+    }
+  }
+  const bool forceRefresh = gesture == WakeGesture::kRefresh;
   const bool forceOta = gesture == WakeGesture::kForceOta;
   const bool toggleTrains = gesture == WakeGesture::kToggleTrains;
   bool showTrains = preferences.getBool("showTrains", true);
@@ -354,9 +477,10 @@ void setup() {
   // Time survives normal ESP32 deep sleep. On a cold boot, briefly join Wi-Fi
   // only to establish Wellesley local time before enforcing the quiet window.
   bool wifiConnected = false;
-  if (!clockIsValid() || forceOta || toggleTrains || pendingOtaConfirmation) {
+  if (!clockIsValid() || forceOta || forceRefresh || toggleTrains || pendingOtaConfirmation) {
     wifiConnected = connectWifi();
     if (!wifiConnected) {
+      if (buttonWake) sleepFor(kRetrySleepUs);
       Serial.println("No saved Wi-Fi connection; starting setup portal");
       startProvisioning();
     }
@@ -368,11 +492,12 @@ void setup() {
 
   const time_t now = time(nullptr);
   const bool activeTime = isActiveTime(now);
-  if (!activeTime && !forceOta && !toggleTrains && !pendingOtaConfirmation) {
+  if (!activeTime && !forceOta && !forceRefresh && !toggleTrains && !pendingOtaConfirmation) {
     sleepFor(sleepUntilActive(now));
   }
 
   if (!wifiConnected && !connectWifi()) {
+    if (buttonWake) sleepFor(kRetrySleepUs);
     Serial.println("No saved Wi-Fi connection; starting setup portal");
     startProvisioning();
   }
@@ -380,6 +505,7 @@ void setup() {
   const String base = backendUrl();
   otaHandleBootConfirmation(preferences, base);
   const char *wakeDetail = forceOta ? "force-update gesture"
+                           : forceRefresh ? "manual data refresh"
                            : toggleTrains ? (showTrains ? "trains enabled" : "trains disabled")
                                           : "normal wake";
   otaReportStatus(base, "online", wakeDetail);
@@ -392,7 +518,7 @@ void setup() {
   }
 
   // A forced check during quiet hours does not also fetch display data.
-  if (!activeTime && !toggleTrains) sleepFor(sleepUntilActive(now));
+  if (!activeTime && !forceRefresh && !toggleTrains) sleepFor(sleepUntilActive(now));
 
   const String frameBase = showTrains ? "/frame" : "/frame-birds";
   const String signature = fetchText(base + frameBase + ".sha256");
@@ -404,7 +530,8 @@ void setup() {
   const String displaySignature = (showTrains ? "trains:" : "birds:") + signature;
   const String previous = preferences.getString("frameHash", "");
   const bool dailyHeal = pollsSinceRefresh >= kDailyHealPolls;
-  if (displaySignature != previous || dailyHeal || toggleTrains) {
+  const bool needsMenuBackground = !wakeMenuHasBackground(displaySignature);
+  if (displaySignature != previous || dailyHeal || toggleTrains || forceRefresh || needsMenuBackground) {
     if (!refreshFrame(base, frameBase + ".jpg", displaySignature)) {
       sleepFor(kRetrySleepUs);
     }
@@ -413,7 +540,10 @@ void setup() {
     Serial.println("Frame unchanged; skipping the e-paper refresh");
   }
 
-  sleepFor(kNormalSleepUs);
+  const time_t finished = time(nullptr);
+  const time_t nextPoll = finished + kNormalSleepUs / kMicrosecondsPerSecond;
+  sleepFor(isActiveTime(nextPoll) ? kNormalSleepUs
+                                : (nextPoll - finished) * kMicrosecondsPerSecond + sleepUntilActive(nextPoll));
 }
 
 void loop() {}
