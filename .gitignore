@@ -71,3 +71,5 @@ whitelist_species_list.txt
 avian/assets/references/
 # Superseded assets retained locally
 avian/assets/_legacy/
+
+/build/timing-libraries/

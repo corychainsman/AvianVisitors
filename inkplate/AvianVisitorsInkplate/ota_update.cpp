@@ -5,6 +5,7 @@
 #include <WiFi.h>
 
 #include "firmware_version.h"
+#include "menu_timing.h"
 #include "ota_public_key.h"
 
 namespace {
@@ -177,6 +178,8 @@ void otaReportStatus(const String &backend, const String &status,
   payload += "&status=" + urlEncode(status);
   payload += "&detail=" + urlEncode(detail);
   payload += "&rssi=" + String(WiFi.RSSI());
+  const String timing = menuTimingJson();
+  if (!timing.isEmpty()) payload += "&menu_opening=" + urlEncode(timing);
   http.POST(payload);
   http.end();
 }

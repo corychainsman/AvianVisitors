@@ -90,3 +90,65 @@ the dual 12.5 MB application partition layout, compiles the bootstrap build,
 detects the single attached serial device, flashes, and verifies it. An
 explicit serial path can be supplied as the first argument if more than one
 USB serial device is present.
+
+### Opening latency telemetry (1.3.4)
+
+The last successful menu opening is retained in RTC memory across deep sleep and
+included as `menu_opening` in ordinary status uploads. Opening never joins Wi-Fi
+for telemetry. After installing, open the menu once, then either press Wake again
+to refresh data (uploading immediately after dismissal) or wait for a scheduled
+network wake. A power loss/reset can discard the pending sample. The server keeps
+the last reported sample when an older client or a later status lacks telemetry.
+
+All intervals are microseconds. `boot_to_ready_us` ends when the panel releases
+BUSY after the refresh command; it excludes subsequent power-off and the close
+animation. The ESP timer starts during ESP-IDF startup, so this is **not** a
+measurement from the physical button edge: ROM/bootloader time is not included.
+BUSY completion is a hardware proxy for visibility, not an optical measurement.
+
+- `boot_to_setup_us`, `setup_to_menu_us`: runtime startup and sketch preparation.
+- `cache_us`: filesystem mount, cache read and verification.
+- `graphics_init_us`, `draw_us`: framebuffer initialization, text and battery read.
+- `driver_prepare_us`: driver entry, semaphore and rectangle preparation.
+- `panel_init_us`: power-on/reset/configuration and power-ready waits.
+- `transfer_us`: partial-window setup and SPI image transfer, including readiness waits.
+- `refresh_us`: refresh command through the subsequent BUSY release.
+- `poweroff_us`: power-down overhead after the image is ready, recorded separately.
+- `driver_total_us`, `menu_total_us`: full driver call and full opening call.
+- `driver_hooks`: true only if all six expected driver checkpoints ran.
+
+The publish/bootstrap scripts build a private copy of the installed Inkplate
+library using `scripts/prepare_inkplate_timing_library.py`. Six timestamp callbacks
+are inserted into the reviewed, hash-pinned partial-update method. The installed
+library, command bytes, waits, voltages and closing behavior are unchanged. To
+compile manually, first run that helper, then pass its printed path with
+`arduino-cli compile --library <path> ...`. A compile-time stamp prevents silently
+building without the instrumented library. `INKPLATE_LIBRARY_DIR` overrides the
+installed library location.
+
+### Faster monochrome waveform research (2026-10-16)
+
+No verified GDEP133C02 monochrome-only fast waveform or selection command was
+found in the checked public sources. This is an unresolved capability question,
+not proof that the hardware cannot support one.
+
+The installed Arduino driver uses the same DRF command/data for every palette.
+[Soldered's ESPHome implementation](https://github.com/SolderedElectronics/Soldered-Inkplate-ESPHome/blob/main/components/inkplate_spi/inkplate13.cpp)
+also exposes partial windows and a fixed waveform selection sequence, without a
+monochrome-specific refresh branch. The
+[Sparkle announcement](https://www.crowdsupply.com/soldered/inkplate-13spectra/updates/week-five-status-report)
+documents rectangular updates, not a B/W speed mode. Good Display's
+[waveform explanation](https://www.good-display.com/news/205.html) confirms that
+waveform data controls refresh speed and that some applications can load external
+waveforms; it does not establish that this particular panel exposes that ability.
+Its [GDEP133C02 product page](https://www.good-display.com/product/559.html) advertises
+fast monochrome refresh under a **different 13.3-inch monochrome product** section;
+that claim does not apply to GDEP133C02.
+
+The precise unresolved vendor question is: does GDEP133C02 on Inkplate 13SPECTRA
+support a manufacturer-approved faster monochrome waveform, and if so what
+register/LUT sequence, temperature limits, timing, and prior-pixel-state constraints
+apply? In particular, can it transition an arbitrary six-color background to
+black/white, or only black/white to black/white? A permanent monochrome area would
+only help in the latter case. No vendor inquiry has been sent, and no experimental
+waveform, temperature override or driving-voltage changes have been deployed.

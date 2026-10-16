@@ -13,6 +13,8 @@ import subprocess
 import sys
 import tempfile
 
+from prepare_inkplate_timing_library import prepare_timing_library
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SKETCH = ROOT / "inkplate" / "AvianVisitorsInkplate"
@@ -76,9 +78,11 @@ def main() -> int:
     if not shutil.which("arduino-cli") or not shutil.which("openssl"):
         raise RuntimeError("arduino-cli and openssl are required")
 
+    timing_library = prepare_timing_library()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     run([
         "arduino-cli", "compile", "--fqbn", FQBN,
+        "--library", str(timing_library),
         "--output-dir", str(OUTPUT_DIR), str(SKETCH),
     ])
     binary = find_application_binary()

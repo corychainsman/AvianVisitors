@@ -24,9 +24,11 @@ if [[ ! -e "$port" ]]; then
   exit 1
 fi
 
+timing_library="$(python3 "$root/scripts/prepare_inkplate_timing_library.py")"
 mkdir -p "$build_dir"
 arduino-cli compile \
   --fqbn "$fqbn" \
+  --library "$timing_library" \
   --output-dir "$build_dir" \
   "$sketch"
 arduino-cli upload \

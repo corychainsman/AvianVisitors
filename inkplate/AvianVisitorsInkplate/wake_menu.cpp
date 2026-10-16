@@ -1,6 +1,7 @@
 #include "wake_menu.h"
 #include "firmware_version.h"
 #include "cache_recovery.h"
+#include "menu_timing.h"
 
 #include <SPIFFS.h>
 #include <Preferences.h>
@@ -184,9 +185,12 @@ bool wakeMenuCaptureBackground(Inkplate &display, const String &frameSignature) 
 
 bool wakeMenuShow(Inkplate &display, const String &frameSignature,
                   const WakeMenuStatus &status) {
+  menuTimingStart();
   if (visible || !loadBackground(frameSignature)) return false;
+  menuTimingCacheLoaded();
   wakeMenuBegin(display);
   if (!display.DMemory4Bit) return false;
+  menuTimingGraphicsReady();
   copyRegion(display, true);
   display.fillRect(kX, kY, kWidth, kHeight, INKPLATE_WHITE);
   display.drawRect(kX, kY, kWidth, kHeight, INKPLATE_BLACK);
@@ -212,7 +216,9 @@ bool wakeMenuShow(Inkplate &display, const String &frameSignature,
   line(display, 252, "Press Wake again to refresh data now");
   line(display, 278, "Closes in 10 seconds");
   const uint32_t started = millis();
+  menuTimingDrawingReady();
   display.displayPartial(kX, kY, kWidth, kHeight);
+  menuTimingFinished();
   Serial.printf("Wake menu show partial refresh: %lu ms\n", static_cast<unsigned long>(millis() - started));
   display.setTextWrap(true);
   visible = true;

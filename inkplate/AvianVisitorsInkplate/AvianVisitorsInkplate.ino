@@ -27,6 +27,7 @@
 #include "firmware_version.h"
 #include "ota_update.h"
 #include "wake_menu.h"
+#include "menu_timing.h"
 
 #ifndef AVIAN_WIFI_SSID
 #define AVIAN_WIFI_SSID ""
@@ -440,6 +441,7 @@ bool refreshFrame(const String &base, const String &imagePath,
 }  // namespace
 
 void setup() {
+  menuTimingSetupStart();
   Serial.begin(115200);
   const bool buttonWake = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0;
   if (!buttonWake) delay(500);
