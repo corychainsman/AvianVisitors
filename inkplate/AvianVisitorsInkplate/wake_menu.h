@@ -7,6 +7,7 @@ struct WakeMenuStatus {
   String wifiStatus;
   String lastUpdate;
   String nextUpdate;
+  String serverVersion;
 };
 
 void wakeMenuBegin(Inkplate &display);

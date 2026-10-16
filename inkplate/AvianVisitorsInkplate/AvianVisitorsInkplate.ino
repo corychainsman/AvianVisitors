@@ -222,6 +222,7 @@ WakeMenuStatus menuStatus() {
   }
   status.lastUpdate = menuTime(preferences.getULong64("lastDisplay", 0));
   status.nextUpdate = menuTime(preferences.getULong64("nextWake", 0));
+  status.serverVersion = preferences.getString("serverVersion", "Unknown");
   return status;
 }
 
@@ -503,6 +504,14 @@ void setup() {
   }
 
   const String base = backendUrl();
+  // Fetch only during an existing network wake; menu opening stays offline.
+  const String serverVersion = fetchText(base + "/avian/server-version.txt");
+  bool validServerVersion = !serverVersion.isEmpty() && serverVersion.length() <= 23;
+  for (size_t i = 0; validServerVersion && i < serverVersion.length(); ++i) {
+    const char c = serverVersion[i];
+    validServerVersion = (c >= '0' && c <= '9') || c == '.';
+  }
+  if (validServerVersion) preferences.putString("serverVersion", serverVersion);
   otaHandleBootConfirmation(preferences, base);
   const char *wakeDetail = forceOta ? "force-update gesture"
                            : forceRefresh ? "manual data refresh"

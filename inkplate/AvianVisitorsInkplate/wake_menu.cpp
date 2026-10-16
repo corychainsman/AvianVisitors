@@ -1,4 +1,5 @@
 #include "wake_menu.h"
+#include "firmware_version.h"
 
 #include <SPIFFS.h>
 #include <Preferences.h>
@@ -8,7 +9,7 @@
 namespace {
 // Rotation 0 maps to native (1199-x,1599-y). Keep every edge aligned
 // to the driver's four-column/two-row partial-window requirements.
-constexpr int kX = 16, kY = 16, kWidth = 544, kHeight = 248;
+constexpr int kX = 16, kY = 16, kWidth = 544, kHeight = 300;
 static_assert(kX % 4 == 0 && kWidth % 4 == 0 && kY % 2 == 0 && kHeight % 2 == 0,
               "Partial rectangle must not expand beyond cached pixels");
 constexpr int kStride = 1200 / 2;
@@ -17,7 +18,7 @@ constexpr int kNativeRow = 1600 - kY - kHeight;
 constexpr size_t kRegionBytes = kWidth / 2 * kHeight;
 constexpr size_t kBytes = kRegionBytes + 8;
 constexpr char kCachePath[] = "/avian-wake-background.bin";
-constexpr uint32_t kMagic = 0x41574D01;
+constexpr uint32_t kMagic = 0x41574D02;
 struct CacheHeader {
   uint32_t magic;
   uint32_t checksum;
@@ -167,8 +168,11 @@ bool wakeMenuShow(Inkplate &display, const String &frameSignature,
   }
   line(display, 120, "Last update: " + status.lastUpdate);
   line(display, 146, "Next update: " + status.nextUpdate);
-  line(display, 184, "Press Wake again to refresh data now");
-  line(display, 214, "Closes in 10 seconds");
+  line(display, 172, "Server (last seen): " + status.serverVersion);
+  line(display, 198, "E-ink: " + String(AVIAN_FIRMWARE_VERSION));
+  line(display, 224, "E-ink build: " + String(AVIAN_FIRMWARE_BUILD));
+  line(display, 252, "Press Wake again to refresh data now");
+  line(display, 278, "Closes in 10 seconds");
   const uint32_t started = millis();
   display.displayPartial(kX, kY, kWidth, kHeight);
   Serial.printf("Wake menu show partial refresh: %lu ms\n", static_cast<unsigned long>(millis() - started));

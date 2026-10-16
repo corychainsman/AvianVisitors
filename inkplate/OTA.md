@@ -11,7 +11,12 @@ The physical Wake button on GPIO 18 opens a small status menu at the top left,
 using the installed Inkplate library's `displayPartial()` support. It shows the
 Wi-Fi network and last connection result (the radio is asleep), estimated battery
 percentage and measured voltage, last successful screen update, and next scheduled
-data check. Times use Wellesley local time. Opening the menu does not wait for Wi-Fi.
+data check. It also shows the running e-ink firmware version/build and the last
+server version fetched from `/avian/server-version.txt`. A missing server version
+shows `Unknown`; a network failure retains the last known version. Bump
+`avian/server-version.txt` when releasing server changes (calendar version
+`YYYY.MM.DD.release`). The file ships with the server image.
+Times use Wellesley local time. Opening the menu does not wait for Wi-Fi.
 
 Press Wake again to fetch and redraw the latest data immediately, including during
 quiet hours. With no second press, the menu begins restoring the underlying image
