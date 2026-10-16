@@ -530,6 +530,11 @@ void setup() {
   // A forced check during quiet hours does not also fetch display data.
   if (!activeTime && !forceRefresh && !toggleTrains) sleepFor(sleepUntilActive(now));
 
+  if (!wakeMenuPrepareStorage(base)) {
+    // Avoid repeatedly flashing the whole panel when the menu cannot be saved.
+    sleepFor(kRetrySleepUs);
+  }
+
   const String frameBase = showTrains ? "/frame" : "/frame-birds";
   const String signature = fetchText(base + frameBase + ".sha256");
   if (signature.length() != 64) {

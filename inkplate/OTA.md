@@ -37,8 +37,15 @@ The menu's background is cached in the existing SPIFFS data partition so it can
 be restored after deep sleep without downloading the frame. The first successful
 frame refresh after upgrading seeds this cache. If a valid matching cache is
 unavailable, the menu is skipped to preserve the image; the button gestures still
-work. Only an entirely erased data partition may be initialized automatically;
-an unrecognized existing filesystem is preserved. Battery percentage is an
+work. An erased data partition is initialized automatically. If existing storage
+cannot mount, firmware 1.3.3 first uploads the entire 6.75 MiB partition to
+`/avian/api/inkplate-cache-backup.php`. It requires a matching SHA-256/length
+receipt before formatting the named `spiffs` partition at `0x1910000`. Backups
+and offset metadata are retained in `runtime/config/InkplateCacheBackups/`,
+outside the webroot. Failed backups preserve the partition; interrupted formatting
+resumes using the already-verified backup. Wi-Fi credentials and firmware slots
+are separate and untouched. The device reports `menu-ready` after saving and
+reading back the background, or the specific failure through its status endpoint. Battery percentage is an
 estimate from voltage, not a calibrated fuel-gauge reading.
 
 ### Wake-menu verification

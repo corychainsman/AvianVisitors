@@ -11,6 +11,7 @@ struct WakeMenuStatus {
 };
 
 const char *wakeMenuDiagnostic();
+bool wakeMenuPrepareStorage(const String &backend);
 void wakeMenuBegin(Inkplate &display);
 bool wakeMenuHasBackground(const String &frameSignature);
 // Invalidate before any full-panel update, capture after it completes.

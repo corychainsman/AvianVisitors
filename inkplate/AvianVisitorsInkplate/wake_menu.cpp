@@ -1,5 +1,6 @@
 #include "wake_menu.h"
 #include "firmware_version.h"
+#include "cache_recovery.h"
 
 #include <SPIFFS.h>
 #include <Preferences.h>
@@ -46,7 +47,7 @@ bool openPreferences() {
 bool mountCache() {
   if (mountAttempted) return mounted || fail(mountError);
   mountAttempted = true;
-  mounted = SPIFFS.begin(false);
+  mounted = SPIFFS.begin(false, "/spiffs", 10, "spiffs");
   if (mounted) return true;
   // Never autoformat a populated or damaged filesystem. Initial provisioning
   // may initialize only a completely erased SPIFFS data partition.
@@ -67,7 +68,7 @@ bool mountCache() {
     }
     delay(1);
   }
-  mounted = SPIFFS.begin(true);
+  mounted = SPIFFS.begin(true, "/spiffs", 10, "spiffs");
   if (!mounted) { mountError = "SPIFFS initialization failed"; return fail(mountError); }
   return true;
 }
@@ -134,6 +135,15 @@ void line(Inkplate &display, int y, String text) {
 }  // namespace
 
 const char *wakeMenuDiagnostic() { return diagnostic; }
+
+bool wakeMenuPrepareStorage(const String &backend) {
+  if (mountCache()) return recoverMenuStorage(backend) || fail("storage recovery marker unavailable");
+  if (!recoverMenuStorage(backend)) return fail("storage repair failed; see backup status");
+  mounted = true;
+  mountAttempted = true;
+  diagnostic = "storage repaired; awaiting background";
+  return true;
+}
 
 void wakeMenuBegin(Inkplate &display) {
   display.begin();
